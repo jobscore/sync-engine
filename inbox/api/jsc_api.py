@@ -1,3 +1,7 @@
+import sys
+import urllib
+import requests
+import simplejson
 from flask import (request, g, Blueprint, make_response, Response)
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
@@ -48,6 +52,8 @@ from inbox.util.misc import imap_folder_path
 from inbox.actions.backends.generic import remote_delete_sent
 from inbox.crispin import writable_connection_pool
 from inbox.auth.gmail import GmailAuthHandler
+from inbox.models import Account
+from inbox.auth.base import handler_from_provider
 
 app = Blueprint(
     'jobscore_custom_api',
@@ -89,7 +95,7 @@ def handle_generic_error(error):
 def auth_callback():
     g.parser.add_argument('authorization_code', type=bounded_str,
         location='args', required=True)
-    g.parser.add_argument('email', type=bounded_str, location='args')
+    g.parser.add_argument('email', required=True, type=bounded_str, location='args')
     g.parser.add_argument('target', type=int, location='args')
     args = strict_parse_args(g.parser, request.args)
 
@@ -102,7 +108,7 @@ def auth_callback():
 
         auth_handler = handler_from_provider('gmail')
 
-        args = {
+        request_args = {
             'client_id': GmailAuthHandler.OAUTH_CLIENT_ID,
             'client_secret': GmailAuthHandler.OAUTH_CLIENT_SECRET,
             'redirect_uri': GmailAuthHandler.OAUTH_REDIRECT_URI,
@@ -113,8 +119,10 @@ def auth_callback():
         headers = {'Content-type': 'application/x-www-form-urlencoded',
                    'Accept': 'text/plain'}
 
-        data = urllib.urlencode(args)
+        data = urllib.urlencode(request_args)
         resp_dict = requests.post(auth_handler.OAUTH_ACCESS_TOKEN_URL, data=data, headers=headers).json()
+
+        # import pdb; pdb.set_trace();
 
         if u'error' in resp_dict:
             return 'Internal error: ' + str(resp_dict['error']), 500
@@ -139,5 +147,9 @@ def auth_callback():
         except NotSupportedError as e:
             return 'Internal error: ' + str(resp_dict['error']), 500
 
-        resp = simplejson.dumps({ 'account_id': account.public_id, 'namespace_id': account.namespace.public_id })
+        resp = simplejson.dumps({
+            'account_id': account.public_id,
+            'namespace_id': account.namespace.public_id
+        })
+
         return make_response( (resp, 201, { 'Content-Type': 'application/json' }))
