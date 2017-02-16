@@ -2,55 +2,13 @@ import sys
 import urllib
 import requests
 import simplejson
-from flask import (request, g, Blueprint, make_response, Response)
+from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
-from sqlalchemy import asc, func
-from sqlalchemy.orm.exc import NoResultFound
-
-from inbox.models import (Message, Block, Part, Thread, Namespace,
-                          Contact, Calendar, Event, Transaction,
-                          DataProcessingCache, Category, MessageCategory)
-from inbox.models.event import RecurringEvent, RecurringEventOverride
-from inbox.models.category import EPOCH
-from inbox.models.backends.generic import GenericAccount
-from inbox.api.sending import (send_draft, send_raw_mime, send_draft_copy,
-                               update_draft_on_send)
-from inbox.api.update import update_message, update_thread
-from inbox.api.kellogs import APIEncoder
-from inbox.api import filtering
-from inbox.api.validation import (valid_account, get_attachments, get_calendar,
-                                  get_recipients, get_draft, valid_public_id,
-                                  valid_event, valid_event_update, timestamp,
-                                  bounded_str, view, strict_parse_args,
-                                  limit, offset, ValidatableArgument,
-                                  strict_bool, validate_draft_recipients,
-                                  valid_delta_object_types, valid_display_name,
-                                  noop_event_update, valid_category_type,
-                                  comma_separated_email_list,
-                                  get_sending_draft)
-from inbox.config import config
-from inbox.contacts.algorithms import (calculate_contact_scores,
-                                       calculate_group_scores,
-                                       calculate_group_counts, is_stale)
-import inbox.contacts.crud
-from inbox.contacts.search import ContactSearchClient
-from inbox.sendmail.base import (create_message_from_json, update_draft,
-                                 delete_draft, create_draft_from_mime,
-                                 SendMailException)
-from inbox.ignition import engine_manager
-from inbox.models.action_log import schedule_action
-from inbox.models.session import new_session, session_scope
-from inbox.search.base import get_search_client, SearchBackendException
-from inbox.transactions import delta_sync
-from inbox.api.err import (err, APIException, NotFoundError, InputError,
-                           AccountDoesNotExistError, log_exception)
-from inbox.events.ical import generate_rsvp, send_rsvp
-from inbox.events.util import removed_participants
-from inbox.util.blockstore import get_from_blockstore
-from inbox.util.misc import imap_folder_path
-from inbox.actions.backends.generic import remote_delete_sent
-from inbox.crispin import writable_connection_pool
+from inbox.api.validation import bounded_str, strict_parse_args, ValidatableArgument
+from inbox.basicauth import NotSupportedError
+from inbox.models.session import session_scope
+from inbox.api.err import APIException, log_exception
 from inbox.auth.gmail import GmailAuthHandler
 from inbox.models import Account
 from inbox.auth.base import handler_from_provider
@@ -144,7 +102,7 @@ def auth_callback():
             if auth_handler.verify_account(account):
                 db_session.add(account)
                 db_session.commit()
-        except NotSupportedError as e:
+        except NotSupportedError:
             return 'Internal error: ' + str(resp_dict['error']), 500
 
         resp = simplejson.dumps({
