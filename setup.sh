@@ -178,7 +178,9 @@ pip install 'pip==8.1.2' 'setuptools>=5.3'
 hash pip        # /usr/bin/pip might now be /usr/local/bin/pip
 pip install 'pip==8.1.2' 'setuptools>=5.3'
 
-sed -i '59s/MARKER_EXPR()/MARKER_EXPR("")/g' /usr/local/lib/python2.7/dist-packages/packaging/requirements.py
+if [[ "$CI" != "true" ]]; do
+  sed -i '59s/MARKER_EXPR()/MARKER_EXPR("")/g' /usr/local/lib/python2.7/dist-packages/packaging/requirements.py
+fi
 
 easy_install -U pyasn1 setuptools
 
