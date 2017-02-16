@@ -57,12 +57,10 @@ def parse_rrule(event):
     if event.rrule is not None:
         if event.all_day:
             start = event.start.to('utc').naive
-            ignoretz = True
         else:
             start = event.start.datetime
-            ignoretz = False
         try:
-            rule = rrulestr(event.rrule, dtstart=start, ignoretz=ignoretz,
+            rule = rrulestr(event.rrule, dtstart=start,
                             compatible=True)
 
             return rule

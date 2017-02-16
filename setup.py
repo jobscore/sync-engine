@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="inbox-sync",
-    version="17.1.6",  # Release Jan 6, 2017
+    version="0.4",
     packages=find_packages(),
 
     install_requires=[],
@@ -18,8 +18,7 @@ setup(
         # And include any *.msg files found in the 'hello' package, too:
         # 'hello': ['*.msg'],
     },
-    data_files=[("sync-engine-test-config", glob.glob("etc/*test*")),
-                ("alembic-inbox-sync", ["alembic.ini"]),
+    data_files=[("alembic-inbox-sync", ["alembic.ini"]),
                 ("alembic-inbox-sync/migrations",
                  filter(os.path.isfile, glob.glob("migrations/*"))),
                 ("alembic-inbox-sync/migrations/versions",
@@ -43,6 +42,7 @@ setup(
              'bin/contact-search-service',
              'bin/contact-search-backfill',
              'bin/contact-search-delete-index',
+             'bin/populate-sync-queue',
              'bin/delete-marked-accounts',
              'bin/backfix-generic-imap-separators.py',
              'bin/backfix-duplicate-categories.py',
@@ -52,13 +52,7 @@ setup(
              'bin/purge-transaction-log',
              'bin/mysql-prompt',
              'bin/unschedule-account-syncs',
-             'bin/syncback-stats',
-             'bin/set-desired-host',
-             'bin/get-accounts-for-host',
-             'bin/deferred-migration-service',
-             'bin/balance-fleet',
-             'bin/get-account-loads',
-             'bin/restart-forgotten-accounts',
+             'bin/syncback-stats'
              ],
 
     # See:
@@ -66,7 +60,7 @@ setup(
     # https://pythonhosted.org/setuptools/pkg_resources.html#entry-points
     zip_safe=False,
     author="Nylas Team",
-    author_email="support@nylas.com",
+    author_email="team@nylas.com",
     description="The Nylas Sync Engine",
     license="AGPLv3",
     keywords="nylas",

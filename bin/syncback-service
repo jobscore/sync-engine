@@ -19,7 +19,6 @@ gevent_openssl.monkey_patch()
 from nylas.logging import configure_logging
 
 from inbox.config import config as inbox_config
-from inbox.mailsync.frontend import SyncbackHTTPFrontend
 from inbox.transactions.actions import SyncbackService
 from inbox.util.startup import preflight, load_overrides
 
@@ -36,12 +35,7 @@ from inbox.util.startup import preflight, load_overrides
 @click.option('--syncback-id',
               help="This sync instance's id: a unique number assigned to "
                    "each syncback instance.")
-@click.option('--enable-tracer/--disable-tracer', default=True,
-              help='Disables the stuck greenlet tracer')
-@click.option('--enable-profiler/--disable-profiler', default=False,
-              help='Enables the CPU profiler web API')
-def main(prod, config, process_num, syncback_id, enable_tracer,
-         enable_profiler):
+def main(prod, config, process_num, syncback_id):
     """ Launch the actions syncback service. """
     if syncback_id is None:
         syncback_id = 0
@@ -60,16 +54,6 @@ def main(prod, config, process_num, syncback_id, enable_tracer,
     def start():
         # Start the syncback service, and just hang out forever
         syncback = SyncbackService(syncback_id, process_num, total_processes)
-
-        if enable_profiler:
-            inbox_config['DEBUG_PROFILING_ON'] = True
-
-        port = 16384 + process_num
-        enable_profiler_api = inbox_config.get('DEBUG_PROFILING_ON')
-        frontend = SyncbackHTTPFrontend(port, enable_tracer,
-                                        enable_profiler_api)
-        frontend.start()
-
         syncback.start()
         syncback.join()
 

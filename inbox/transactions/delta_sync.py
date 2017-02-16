@@ -195,12 +195,10 @@ def format_transactions_after_pointer(namespace, pointer, db_session,
 
                 if object_cls == Thread:
                     query = query.options(*Thread.api_loading_options(expand))
-                if object_cls == Message:
+                elif object_cls == Message:
                     query = query.options(*Message.api_loading_options(expand))
-                    # T7045: Workaround for some SQLAlchemy bugs.
-                    objects = {obj.id: obj for obj in query if obj.thread is not None}
-                else:
-                    objects = {obj.id: obj for obj in query}
+
+                objects = {obj.id: obj for obj in query}
 
             for trx in latest_trxs:
                 delta = {
