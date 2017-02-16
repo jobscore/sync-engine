@@ -178,7 +178,7 @@ pip install 'pip==8.1.2' 'setuptools>=5.3'
 hash pip        # /usr/bin/pip might now be /usr/local/bin/pip
 pip install 'pip==8.1.2' 'setuptools>=5.3'
 
-if [[ "$CI" != "true" ]]; do
+if [[ "$CI" != "true" ]]; then
   sed -i '59s/MARKER_EXPR()/MARKER_EXPR("")/g' /usr/local/lib/python2.7/dist-packages/packaging/requirements.py
 fi
 
