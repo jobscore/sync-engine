@@ -8,7 +8,7 @@ from flask.ext.restful import reqparse
 from inbox.api.validation import bounded_str, strict_parse_args, ValidatableArgument
 from inbox.basicauth import NotSupportedError
 from inbox.models.session import session_scope
-from inbox.api.err import APIException, log_exception
+from inbox.api.err import APIException, InputError, log_exception
 from inbox.auth.gmail import GmailAuthHandler
 from inbox.models import Account
 from inbox.auth.base import handler_from_provider
@@ -62,7 +62,7 @@ def auth_callback():
     with session_scope(shard) as db_session:
         account = db_session.query(Account).filter_by(email_address=args['email']).first()
         if account is not None:
-            return 'Account is already registered', 400
+            raise InputError('Account is already registered')
 
         auth_handler = handler_from_provider('gmail')
 
@@ -80,10 +80,8 @@ def auth_callback():
         data = urllib.urlencode(request_args)
         resp_dict = requests.post(auth_handler.OAUTH_ACCESS_TOKEN_URL, data=data, headers=headers).json()
 
-        # import pdb; pdb.set_trace();
-
         if u'error' in resp_dict:
-            return 'Internal error: ' + str(resp_dict['error']), 500
+            raise APIException('Internal error: ' + str(resp_dict['error']))
 
         access_token = resp_dict['access_token']
         validation_dict = auth_handler.validate_token(access_token)
@@ -103,7 +101,7 @@ def auth_callback():
                 db_session.add(account)
                 db_session.commit()
         except NotSupportedError:
-            return 'Internal error: ' + str(resp_dict['error']), 500
+            raise APIException('Internal error: ' + str(resp_dict['error']))
 
         resp = simplejson.dumps({
             'account_id': account.public_id,
