@@ -12,6 +12,7 @@ from inbox.api.validation import (bounded_str, ValidatableArgument,
 from inbox.api.validation import valid_public_id
 
 from ns_api import app as ns_api
+from jsc_api import app as custom_api
 from ns_api import DEFAULT_LIMIT
 
 from inbox.webhooks.gpush_notifications import app as webhooks_api
@@ -41,7 +42,8 @@ for code in default_exceptions.iterkeys():
 def auth():
     """ Check for account ID on all non-root URLS """
     if request.path in ('/accounts', '/accounts/', '/') \
-            or request.path.startswith('/w/'):
+            or request.path.startswith('/w/') \
+            or request.path.startswith('/c/'):
         return
 
     if not request.authorization or not request.authorization.username:
@@ -131,3 +133,4 @@ def logout():
 
 app.register_blueprint(ns_api)
 app.register_blueprint(webhooks_api)  # /w/...
+app.register_blueprint(custom_api) # /c/
