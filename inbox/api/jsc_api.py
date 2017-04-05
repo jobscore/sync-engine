@@ -61,8 +61,10 @@ def auth_callback():
 
     with session_scope(shard) as db_session:
         account = db_session.query(Account).filter_by(email_address=args['email']).first()
+
+        updating_account = False
         if account is not None:
-            raise InputError('Account is already registered')
+            updating_account = True
 
         auth_handler = handler_from_provider('gmail')
 
@@ -98,7 +100,11 @@ def auth_callback():
         auth_info = { 'provider': 'gmail' }
         auth_info.update(resp_dict)
 
-        account = auth_handler.create_account(args['email'], auth_info)
+        if updating_account:
+            account.auth_handler.update_account(account, auth_info)
+        else:
+            account = auth_handler.create_account(args['email'], auth_info)
+
         try:
             if auth_handler.verify_account(account):
                 db_session.add(account)
