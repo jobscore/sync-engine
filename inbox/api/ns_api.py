@@ -6,6 +6,7 @@ import uuid
 import base64
 import gevent
 import itertools
+from hashlib import sha256
 from datetime import datetime
 from collections import namedtuple
 
@@ -14,7 +15,9 @@ from flask import (request, g, Blueprint, make_response, Response,
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
 from sqlalchemy import asc, func
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm import joinedload, load_only
 
 from inbox.models import (Message, Block, Part, Thread, Namespace,
                           Contact, Calendar, Event, Transaction,
@@ -49,16 +52,30 @@ from inbox.sendmail.base import (create_message_from_json, update_draft,
 from inbox.ignition import engine_manager
 from inbox.models.action_log import schedule_action
 from inbox.models.session import new_session, session_scope
-from inbox.search.base import get_search_client, SearchBackendException
+from inbox.search.base import get_search_client, SearchBackendException, SearchStoreException
 from inbox.transactions import delta_sync
 from inbox.api.err import (err, APIException, NotFoundError, InputError,
                            AccountDoesNotExistError, log_exception)
 from inbox.events.ical import generate_rsvp, send_rsvp
 from inbox.events.util import removed_participants
-from inbox.util.blockstore import get_from_blockstore
+from inbox.util import blockstore
 from inbox.util.misc import imap_folder_path
 from inbox.actions.backends.generic import remote_delete_sent
 from inbox.crispin import writable_connection_pool
+from inbox.s3.base import get_raw_from_provider
+from inbox.s3.exc import (EmailFetchException, TemporaryEmailFetchException,
+                          EmailDeletedException)
+from inbox.util.stats import statsd_client
+
+try:
+    from inbox.util.eas.codes import STORE_STATUS_CODES
+except ImportError:
+    # Only important for EAS search failures, so shouldn't trigge test fail
+    pass
+
+
+from nylas.logging import get_logger
+log = get_logger()
 
 DEFAULT_LIMIT = 100
 LONG_POLL_REQUEST_TIMEOUT = 120
@@ -102,6 +119,7 @@ APIFeatures = namedtuple('APIFeatures', ['optimistic_updates'])
 # API_VERSIONS list.
 API_VERSIONS = ['2016-03-07', '2016-08-09']
 
+
 @app.before_request
 def start():
     g.api_version = request.headers.get('Api-Version', API_VERSIONS[0])
@@ -114,22 +132,24 @@ def start():
     else:
         g.api_features = APIFeatures(optimistic_updates=False)
 
+    request.environ['log_context'] = {
+        'endpoint': request.endpoint,
+        'api_version': g.api_version,
+        'namespace_id': g.namespace_id,
+    }
+
     engine = engine_manager.get_for_id(g.namespace_id)
     g.db_session = new_session(engine)
     g.namespace = Namespace.get(g.namespace_id, g.db_session)
 
-    request.environ['log_context'] = {
-        'endpoint': request.endpoint,
-    }
     if not g.namespace:
         # The only way this can occur is if there used to be an account that
         # was deleted, but the API access cache entry has not been expired yet.
         raise AccountDoesNotExistError()
 
-    request.environ['log_context'].update({
-        'account_id': g.namespace.account_id,
-        'namespace_id': g.namespace.id,
-    })
+    request.environ['log_context']['account_id'] = g.namespace.account_id
+    if hasattr(g, 'application_id'):
+        request.environ['log_context']['application_id'] = g.application_id
 
     is_n1 = request.environ.get('IS_N1', False)
     g.encoder = APIEncoder(g.namespace.public_id, is_n1=is_n1)
@@ -158,6 +178,13 @@ def before_remote_request():
                              'namespace_api.message_streaming_search_api',
                              'namespace_api.thread_streaming_search_api') or
             request.method in ('POST', 'PUT', 'PATCH', 'DELETE')):
+
+        if g.namespace:
+            # Logging provider here to ensure that the provider is only logged for
+            # requests that modify data or are proxied to remote servers.
+            request.environ['log_context']['provider'] = \
+                    g.namespace.account.provider
+
         valid_account(g.namespace)
 
 
@@ -167,6 +194,20 @@ def finish(response):
         g.db_session.commit()
     if hasattr(g, 'db_session'):
         g.db_session.close()
+    return response
+
+
+@app.errorhandler(OperationalError)
+def handle_operational_error(error):
+    rule = request.url_rule
+    if 'send' in rule.rule and 'rsvp' not in rule.rule:
+        message = "A temporary database error prevented us from serving this request. Your message has NOT been sent. Please try again in a few minutes."
+    else:
+        message = "A temporary database error prevented us from serving this request. Please try again."
+
+    log.error('MySQL OperationalError', exc_info=True)
+    response = flask_jsonify(message=message, type='database_error')
+    response.status_code = 503
     return response
 
 
@@ -193,8 +234,8 @@ def handle_input_error(error):
 @app.errorhandler(Exception)
 def handle_generic_error(error):
     log_exception(sys.exc_info())
-    response = flask_jsonify(message=error.message,
-                             type='api_error')
+    response = flask_jsonify(message="An internal error occured. If this issue persists, please contact support@nylas.com and include this request_uid: {}".format(
+        request.headers.get('X-Unique-ID'), type='api_error'))
     response.status_code = 500
     return response
 
@@ -283,6 +324,12 @@ def thread_search_api():
         if exc.server_error:
             kwargs['server_error'] = exc.server_error
         return err(exc.http_code, exc.message, **kwargs)
+    except SearchStoreException as exc:
+        store_status = STORE_STATUS_CODES.get(str(exc.err_code))
+        kwargs = {}
+        if store_status.requires_user_action:
+            kwargs['server_error'] = store_status.resolution
+        return err(store_status.http_code, store_status.meaning, **kwargs)
 
 
 @app.route('/threads/search/streaming', methods=['GET'])
@@ -304,6 +351,12 @@ def thread_streaming_search_api():
         if exc.server_error:
             kwargs['server_error'] = exc.server_error
         return err(exc.http_code, exc.message, **kwargs)
+    except SearchStoreException as exc:
+        store_status = STORE_STATUS_CODES.get(str(exc.err_code))
+        kwargs = {}
+        if store_status.requires_user_action:
+            kwargs['server_error'] = store_status.resolution
+        return err(store_status.http_code, store_status.meaning, **kwargs)
 
 
 @app.route('/threads/<public_id>')
@@ -315,7 +368,8 @@ def thread_api(public_id):
     try:
         valid_public_id(public_id)
         thread = g.db_session.query(Thread).filter(
-            Thread.public_id == public_id,
+            Thread.public_id == public_id,  # noqa
+            Thread.deleted_at == None,  # noqa
             Thread.namespace_id == g.namespace.id).one()
         return encoder.jsonify(thread)
     except NoResultFound:
@@ -330,7 +384,8 @@ def thread_api_update(public_id):
     try:
         valid_public_id(public_id)
         thread = g.db_session.query(Thread).filter(
-            Thread.public_id == public_id,
+            Thread.public_id == public_id,  # noqa
+            Thread.deleted_at == None,  # noqa
             Thread.namespace_id == g.namespace.id).one()
     except NoResultFound:
         raise NotFoundError("Couldn't find thread `{0}` ".format(public_id))
@@ -433,6 +488,12 @@ def message_search_api():
         if exc.server_error:
             kwargs['server_error'] = exc.server_error
         return err(exc.http_code, exc.message, **kwargs)
+    except SearchStoreException as exc:
+        store_status = STORE_STATUS_CODES.get(str(exc.err_code))
+        kwargs = {}
+        if store_status.requires_user_action:
+            kwargs['server_error'] = store_status.resolution
+        return err(store_status.http_code, store_status.meaning, **kwargs)
 
 
 @app.route('/messages/search/streaming', methods=['GET'])
@@ -454,6 +515,12 @@ def message_streaming_search_api():
         if exc.server_error:
             kwargs['server_error'] = exc.server_error
         return err(exc.http_code, exc.message, **kwargs)
+    except SearchStoreException as exc:
+        store_status = STORE_STATUS_CODES.get(str(exc.err_code))
+        kwargs = {}
+        if store_status.requires_user_action:
+            kwargs['server_error'] = store_status.resolution
+        return err(store_status.http_code, store_status.meaning, **kwargs)
 
 
 @app.route('/messages/<public_id>', methods=['GET'])
@@ -470,13 +537,54 @@ def message_read_api(public_id):
         raise NotFoundError("Couldn't find message {0}".format(public_id))
 
     if request.headers.get('Accept', None) == 'message/rfc822':
-        raw_message = get_from_blockstore(message.data_sha256)
+        raw_message = blockstore.get_from_blockstore(message.data_sha256)
         if raw_message is not None:
             return Response(raw_message, mimetype='message/rfc822')
         else:
+            # Try getting the message from the email provider.
+            account = g.namespace.account
+            statsd_string = 'api.direct_fetching.{}.{}'\
+                .format(account.provider, account.id)
+
+            try:
+                with statsd_client.timer('{}.provider_latency'.format(
+                                         statsd_string)):
+                    contents = get_raw_from_provider(message)
+                statsd_client.incr('{}.successes'.format(statsd_string))
+            except TemporaryEmailFetchException:
+                statsd_client.incr(
+                    '{}.temporary_failure'.format(statsd_string))
+                log.warning('Exception when fetching email',
+                            account_id=account.id, provider=account.provider,
+                            logstash_tag='direct_fetching', exc_info=True)
+
+                return err(503, "Email server returned a temporary error. "
+                                "Please try again in a few minutes.")
+            except EmailDeletedException:
+                statsd_client.incr('{}.deleted'.format(statsd_string))
+                log.warning('Exception when fetching email',
+                            account_id=account.id, provider=account.provider,
+                            logstash_tag='direct_fetching', exc_info=True)
+
+                return err(404, "The data was deleted on the email server.")
+            except EmailFetchException:
+                statsd_client.incr('{}.failures'.format(statsd_string))
+                log.warning('Exception when fetching email',
+                            account_id=account.id, provider=account.provider,
+                            logstash_tag='direct_fetching', exc_info=True)
+
+                return err(404, "Couldn't find data on the email server.")
+
+            if contents is not None:
+                # If we found it, save it too.
+                data_sha256 = sha256(contents).hexdigest()
+                blockstore.save_to_blockstore(data_sha256, contents)
+                return contents
+
             request.environ['log_context']['message_id'] = message.id
             raise NotFoundError(
-                "Couldn't find raw contents for message `{0}`"
+                "Couldn't find raw contents for message `{0}`. "
+                "Please try again in a few minutes."
                 .format(public_id))
 
     return encoder.jsonify(message)
@@ -682,7 +790,6 @@ def folder_label_delete_api(public_id):
                 "Folder {} cannot be deleted because it contains messages.".
                 format(public_id))
 
-
         if g.api_features.optimistic_updates:
             deleted_at = datetime.utcnow()
             category.deleted_at = deleted_at
@@ -730,11 +837,15 @@ def contact_api():
     if args['filter']:
         results = results.filter(Contact.email_address == args['filter'])
     results = results.with_hint(
-        Contact, 'USE INDEX (ix_contact_ns_uid_provider_name)')\
-        .order_by(asc(Contact.created_at))
+            Contact, 'USE INDEX (idx_namespace_created)')\
+            .order_by(asc(Contact.created_at))
 
     if args['view'] == 'count':
         return g.encoder.jsonify({"count": results.scalar()})
+
+    if args['view'] != 'ids':
+        results = results.options(load_only('public_id', '_raw_address', 'name'),
+                                  joinedload(Contact.phone_numbers))
 
     results = results.limit(args['limit']).offset(args['offset']).all()
     if args['view'] == 'ids':
@@ -843,6 +954,7 @@ def event_create_api():
         participants = []
 
     for p in participants:
+        p['email'] = p['email'].lower()
         if 'status' not in p:
             p['status'] = 'noreply'
 
@@ -878,7 +990,8 @@ def event_read_api(public_id):
     try:
         event = g.db_session.query(Event).filter(
             Event.namespace_id == g.namespace.id,
-            Event.public_id == public_id).one()
+            Event.public_id == public_id,
+            Event.deleted_at == None).one()  # noqa
     except NoResultFound:
         raise NotFoundError("Couldn't find event id {0}".format(public_id))
     return g.encoder.jsonify(event)
@@ -895,14 +1008,16 @@ def event_update_api(public_id):
     try:
         event = g.db_session.query(Event).filter(
             Event.public_id == public_id,
-            Event.namespace_id == g.namespace.id).one()
+            Event.namespace_id == g.namespace.id,
+            Event.deleted_at == None).one()  # noqa
     except NoResultFound:
         raise NotFoundError("Couldn't find event {0}".format(public_id))
 
     # iCalendar-imported files are read-only by default but let's give a
     # slightly more helpful error message.
     if event.calendar == g.namespace.account.emailed_events_calendar:
-        raise InputError('Can not update an event imported from an iCalendar file.')
+        raise InputError(
+            'Can not update an event imported from an iCalendar file.')
 
     if event.read_only:
         raise InputError('Cannot update read_only event.')
@@ -920,6 +1035,7 @@ def event_update_api(public_id):
     cancelled_participants = []
     if 'participants' in data:
         for p in data['participants']:
+            p['email'] = p['email'].lower()
             if 'status' not in p:
                 p['status'] = 'noreply'
 
@@ -930,6 +1046,7 @@ def event_update_api(public_id):
         # db. With MySQL, this means that the column will be 64k.
         # Drop the latest participants until it fits in the column.
         while len(json.dumps(cancelled_participants)) > 63000:
+            log.warning("Truncating cancelled participants", cancelled_participants=cancelled_participants)
             cancelled_participants.pop()
 
     # Don't update an event if we don't need to.
@@ -958,8 +1075,9 @@ def event_update_api(public_id):
                       cancelled_participants=cancelled_participants,
                       notify_participants=notify_participants)
 
-        if len(json.dumps(kwargs)) > 2**16 - 12:
-            raise InputError('Event update too big --- please break it in parts.')
+        if len(json.dumps(kwargs)) > 2 ** 16 - 12:
+            raise InputError(
+                'Event update too big --- please break it in parts.')
 
         if event.calendar != account.emailed_events_calendar:
             schedule_action('update_event', event, g.namespace.id, g.db_session,
@@ -977,24 +1095,26 @@ def event_delete_api(public_id):
 
     valid_public_id(public_id)
     try:
-        event = g.db_session.query(Event).filter_by(
-            public_id=public_id,
-            namespace_id=g.namespace.id).one()
+        event = g.db_session.query(Event).filter(
+            Event.public_id == public_id,
+            Event.namespace_id == g.namespace.id,
+            Event.deleted_at == None).one()  # noqa
     except NoResultFound:
         raise NotFoundError("Couldn't find event {0}".format(public_id))
 
     if event.calendar == g.namespace.account.emailed_events_calendar:
-        raise InputError('Can not update an event imported from an iCalendar file.')
+        raise InputError(
+            'Can not update an event imported from an iCalendar file.')
 
     if event.calendar.read_only:
         raise InputError('Cannot delete event {} from read_only calendar.'.
                          format(public_id))
 
-
     if g.api_features.optimistic_updates:
         # Set the local event status to 'cancelled' rather than deleting it,
         # in order to be consistent with how we sync deleted events from the
-        # remote, and consequently return them through the events, delta sync APIs
+        # remote, and consequently return them through the events, delta sync
+        # APIs
         event.sequence_number += 1
         event.status = 'cancelled'
         g.db_session.commit()
@@ -1211,7 +1331,35 @@ def file_download_api(public_id):
 
     # TODO the part.data object should really behave like a stream we can read
     # & write to
-    response = make_response(f.data)
+    try:
+        account = g.namespace.account
+        statsd_string = 'api.direct_fetching.{}.{}'.format(account.provider,
+                                                           account.id)
+
+        response = make_response(f.data)
+        statsd_client.incr('{}.successes'.format(statsd_string))
+
+    except TemporaryEmailFetchException:
+        statsd_client.incr('{}.temporary_failure'.format(statsd_string))
+        log.warning('Exception when fetching email',
+                    account_id=account.id, provider=account.provider,
+                    logstash_tag='direct_fetching', exc_info=True)
+
+        return err(503, "Email server returned a temporary error. "
+                        "Please try again in a few minutes.")
+    except EmailDeletedException:
+        statsd_client.incr('{}.deleted'.format(statsd_string))
+        log.warning('Exception when fetching email',
+                    account_id=account.id, provider=account.provider,
+                    logstash_tag='direct_fetching', exc_info=True)
+
+        return err(404, "The data was deleted on the email server.")
+    except EmailFetchException:
+        statsd_client.incr('{}.failures'.format(statsd_string))
+        log.warning('Exception when fetching email',
+                    logstash_tag='direct_fetching', exc_info=True)
+
+        return err(404, "Couldn't find data on email server.")
 
     response.headers['Content-Type'] = 'application/octet-stream'  # ct
     # Werkzeug will try to encode non-ascii header values as latin-1. Try that
@@ -1395,9 +1543,11 @@ def draft_delete_api(public_id):
 
 
 @app.route('/send', methods=['POST'])
+@app.route('/send-with-features', methods=['POST'])  # TODO deprecate this URL
 def draft_send_api():
     request_started = time.time()
     account = g.namespace.account
+
     if request.content_type == "message/rfc822":
         draft = create_draft_from_mime(account, request.data,
                                        g.db_session)
@@ -1409,17 +1559,37 @@ def draft_send_api():
         return resp
 
     data = request.get_json(force=True)
+
+    # Check if using tracking
+    tracking_options = data.get('tracking', {})
+
     draft_public_id = data.get('draft_id')
     if draft_public_id is not None:
         draft = get_draft(draft_public_id, data.get('version'),
                           g.namespace.id, g.db_session)
-        schedule_action('delete_draft', draft, draft.namespace.id,
-                        g.db_session, nylas_uid=draft.nylas_uid,
-                        message_id_header=draft.message_id_header)
     else:
         draft = create_message_from_json(data, g.namespace,
                                          g.db_session, is_draft=False)
     validate_draft_recipients(draft)
+
+    if tracking_options:  # Open/Link/Reply tracking set
+        try:
+            from redwood.api.tracking import handle_tracking_options
+        except ImportError:
+            return err(501,
+                       'Tracking is not implemented in the open source '
+                       'Nylas Cloud API. See our hosted version for this '
+                       'feature. https://nylas.com/cloud')
+
+        assert hasattr(g, 'application_id'), \
+            'Tracking requires application ID'
+
+        handle_tracking_options(
+                mailsync_db_session=g.db_session,
+                tracking_options=tracking_options,
+                draft=draft,
+                application_id=g.application_id)
+
     if isinstance(account, GenericAccount):
         schedule_action('save_sent_email', draft, draft.namespace.id,
                         g.db_session)
@@ -1430,6 +1600,12 @@ def draft_send_api():
         return err(504, 'Request timed out.')
 
     resp = send_draft(account, draft, g.db_session)
+
+    # Only delete the draft once we know it has been sent
+    if draft_public_id is not None and resp.status_code == 200:
+        schedule_action('delete_draft', draft, draft.namespace.id,
+                        g.db_session, nylas_uid=draft.nylas_uid,
+                        message_id_header=draft.message_id_header)
     return resp
 
 

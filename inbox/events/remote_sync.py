@@ -49,7 +49,7 @@ class EventSync(BaseSyncMonitor):
         """Query a remote provider for updates and persist them to the
         database. This function runs every `self.poll_frequency`.
         """
-        self.log.info('syncing events')
+        self.log.debug('syncing events')
 
         try:
             deleted_uids, calendar_changes = self.provider.sync_calendars()
@@ -163,16 +163,8 @@ def handle_event_updates(namespace_id, calendar_id, events, log, db_session):
                 for override in local_event.overrides:
                     override.status = 'cancelled'
 
-            merged_participants = local_event.\
-                _partial_participants_merge(event)
-
             local_event.update(event)
-
-            # We have to do this mumbo-jumbo because MutableList does
-            # not register changes to nested elements.
-            local_event.participants = []
-            for participant in merged_participants:
-                local_event.participants.append(participant)
+            local_event.participants = event.participants
 
             updated_count += 1
         else:
@@ -210,7 +202,7 @@ class GoogleEventSync(EventSync):
         currently subscribed to push notificaitons and haven't heard anything
         new from Google.
         """
-        self.log.info('syncing events')
+        self.log.debug('syncing events')
 
         try:
             self._refresh_gpush_subscriptions()
