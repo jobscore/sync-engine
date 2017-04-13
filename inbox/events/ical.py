@@ -169,7 +169,7 @@ def events_from_ics(namespace, calendar, ics_str):
                 if 'CN' in organizer.params:
                     organizer_name = organizer.params['CN']
 
-                owner = formataddr([organizer_name, organizer_email])
+                owner = formataddr([organizer_name, organizer_email.lower()])
             else:
                 owner = None
 
@@ -213,7 +213,7 @@ def events_from_ics(namespace, calendar, ics_str):
                 except KeyError:
                     pass
 
-                participants.append({'email': email,
+                participants.append({'email': email.lower(),
                                      'name': name,
                                      'status': status,
                                      'notes': notes,
@@ -443,7 +443,7 @@ def generate_icalendar_invite(event, invite_type='request'):
     account = event.namespace.account
     organizer = icalendar.vCalAddress(u"MAILTO:{}".format(
         account.email_address))
-    if account.name is not None:
+    if account.name is not None and account.name != '':
         organizer.params['CN'] = account.name
 
     icalendar_event['organizer'] = organizer
@@ -521,7 +521,7 @@ def generate_invite_message(ical_txt, event, account, invite_type='request'):
 
     # From should match our mailsend provider (mailgun) so it doesn't confuse
     # spam filters
-    msg.headers['From'] = "notifications@mg.nylas.com"
+    msg.headers['From'] = "automated@notifications.nylas.com"
     msg.headers['Reply-To'] = account.email_address
 
     if invite_type == 'request':
@@ -542,6 +542,12 @@ def send_invite(ical_txt, event, account, invite_type='request'):
     for participant in event.participants:
         email = participant.get('email', None)
         if email is None:
+            continue
+
+        if email == account.email_address:
+            # If the organizer is among the participants, don't send
+            # a second email. They already have the event on their
+            # calendar.
             continue
 
         msg = generate_invite_message(ical_txt, event, account, invite_type)
