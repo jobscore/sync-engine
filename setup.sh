@@ -90,6 +90,7 @@ apt-get -y install git \
                    libxslt-dev \
                    lib32z1-dev \
                    libffi-dev \
+                   libssl-dev \
                    pkg-config \
                    python-lxml \
                    tmux \
@@ -167,16 +168,22 @@ if ! ${prod}; then
         rm -f /tmp/6379.conf
         cd ../..
         rm -rf redis-${redis_version} redis-${redis_version}.tar.gz
+
+        # modify redis conf so that redis is only accessible localy
+        sed -i '/^#.*bind 127/s/^#//' /etc/redis/6379.conf
     fi
     color '34;1' 'redis-'${redis_version}' installed.'
 fi
 
 color '35;1' 'Ensuring setuptools and pip versions...'
+# Need up-to-date pyparsing or upgrading pip will break pip
+# https://github.com/pypa/packaging/issues/94
+pip install 'pyparsing==2.2.0'
 # If python-setuptools is actually the old 'distribute' fork of setuptools,
 # then the first 'pip install setuptools' will be a no-op.
-pip install 'pip==8.1.2' 'setuptools>=5.3'
+pip install 'pip==9.0.1' 'setuptools==34.3.1'
 hash pip        # /usr/bin/pip might now be /usr/local/bin/pip
-pip install 'pip==8.1.2' 'setuptools>=5.3'
+pip install 'pip==9.0.1' 'setuptools==34.3.1'
 
 if [[ "$CI" != "true" ]]; then
   sed -i '59s/MARKER_EXPR()/MARKER_EXPR("")/g' /usr/local/lib/python2.7/dist-packages/packaging/requirements.py

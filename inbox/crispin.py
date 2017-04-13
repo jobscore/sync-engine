@@ -590,7 +590,9 @@ class CrispinClient(object):
 
         if not role:
             for flag in flags:
-                role = flag_map.get(flag)
+                if flag in flag_map:
+                    role = flag_map[flag]
+                    break
 
         return RawFolder(display_name=display_name, role=role)
 
@@ -1007,6 +1009,7 @@ class GmailCrispinClient(CrispinClient):
             for flag in flags:
                 if flag in flag_map:
                     role = flag_map[flag]
+                    break
 
         return RawFolder(display_name=display_name, role=role)
 

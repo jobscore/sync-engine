@@ -21,7 +21,7 @@ chardet==2.1.1
 setproctitle==1.1.8
 gdata==2.0.18
 git+https://github.com/nylas/dateutil.git@da336a366cd3#egg=python-dateutil
-git+https://github.com/khamidou/flanker.git@fix_chinese_subjects#egg=flanker
+git+https://github.com/nylas/flanker.git@master#egg=flanker
 alembic==0.6.5
 iconv==1.0
 pep8==1.4.6
@@ -62,3 +62,7 @@ gevent_openssl==1.2
 backports.ssl==0.0.9
 git+https://github.com/nylas/imapclient.git@3b0cffc2a4964aceb0b7f41d40855c6d285e88ef#egg=imapclient
 tldextract==1.7.5
+tox==2.3.1
+nylas==1.2.3
+cffi>=1.6
+pyasn1==0.2.3

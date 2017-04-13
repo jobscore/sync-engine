@@ -25,6 +25,8 @@ localized_folder_names = {
     'sent': {'Postausgang', 'INBOX.Gesendet', '[Gmail]/Sent Mail',
              '\xeb\xb3\xb4\xeb\x82\xbc\xed\x8e\xb8\xec\xa7\x80\xed\x95\xa8'
              'Elementos enviados', 'Sent', 'Sent Items', 'Sent Messages',
-             'INBOX.Papierkorb', 'Odeslan\xc3\xa9', 'mail/sent-mail',
-             'Ko\xc5\xa1', 'Outbox', 'OUTBOX', 'INBOX.SentMail', 'Gesendet',
-             'Ko\xc5\xa1/Sent Items', 'Gesendete Elemente'}}
+             'INBOX.Sent Messages', 'Odeslan\xc3\xa9', 'mail/sent-mail',
+             'Ko\xc5\xa1', 'INBOX.SentMail', 'Gesendet',
+             'Ko\xc5\xa1/Sent Items', 'Gesendete Elemente',
+             'INBOX.\xc9l\xe9ments envoy\xe9s', 'INBOX.INBOX.Sent',
+             'Objets envoy\xe9s', }}
