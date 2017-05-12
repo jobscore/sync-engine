@@ -18,7 +18,7 @@ from inbox.mailsync.backends.imap.generic import uidvalidity_cb
 from inbox.crispin import connection_pool
 from imapclient.imap_utf7 import encode as utf7_encode
 
-DEFAULT_MESSAGE_TTL = 2 * 60            # 2 minutes
+DEFAULT_MESSAGE_TTL = 60 * 60 * 12      # 12 hours
 DEFAULT_THREAD_TTL = 60 * 60 * 24 * 7   # 7 days
 MAX_FETCH = 1000
 
