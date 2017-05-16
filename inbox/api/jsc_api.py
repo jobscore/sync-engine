@@ -172,10 +172,10 @@ def create_account():
                     'account_id': account.public_id,
                     'namespace_id': account.namespace.public_id
                 })
+                return make_response((resp, 201, { 'Content-Type': 'application/json' }))
             else:
                 resp = simplejson.dumps({ 'message': 'Account verification failed', 'type': 'api_error' })
-
-            return make_response((resp, 201, { 'Content-Type': 'application/json' }))
+                return make_response((resp, 422, { 'Content-Type': 'application/json' }))
         except NotSupportedError as e:
             resp = simplejson.dumps({ 'message': str(e), type: 'custom_api_error' })
             return make_response((resp, 400, { 'Content-Type': 'application/json' }))
