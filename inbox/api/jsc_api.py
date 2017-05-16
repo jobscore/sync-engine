@@ -20,6 +20,11 @@ app = Blueprint(
 
 app.log_exception = log_exception
 
+DEFAULT_IMAP_PORT = 143
+DEFAULT_IMAP_SSL_PORT = 993
+DEFAULT_SMTP_PORT = 25
+DEFAULT_SMTP_SSL_PORT = 465
+
 @app.before_request
 def start():
     request.environ['log_context'] = {
@@ -124,11 +129,11 @@ def create_account():
     g.parser.add_argument('target', type=int, location='args')
     g.parser.add_argument('email', required=True, type=bounded_str, location='form')
     g.parser.add_argument('smtp_host', required=True, type=bounded_str, location='form')
-    g.parser.add_argument('smtp_port', required=True, type=int, location='form')
+    g.parser.add_argument('smtp_port', type=int, location='form')
     g.parser.add_argument('smtp_username', required=True, type=bounded_str, location='form')
     g.parser.add_argument('smtp_password', required=True, type=bounded_str, location='form')
     g.parser.add_argument('imap_host', required=True, type=bounded_str, location='form')
-    g.parser.add_argument('imap_port', required=True, type=int, location='form')
+    g.parser.add_argument('imap_port', type=int, location='form')
     g.parser.add_argument('imap_username', required=True, type=bounded_str, location='form')
     g.parser.add_argument('imap_password', required=True, type=bounded_str, location='form')
     g.parser.add_argument('ssl_required', required=True, type=bool, location='form')
@@ -145,11 +150,11 @@ def create_account():
         provider_auth_info = dict(provider='custom',
                                   email=args['email'],
                                   imap_server_host=args['imap_host'],
-                                  imap_server_port=args['imap_port'],
+                                  imap_server_port=(args.get('imap_port') or DEFAULT_IMAP_SSL_PORT),
                                   imap_username=args['imap_username'],
                                   imap_password=args['imap_password'],
                                   smtp_server_host=args['smtp_host'],
-                                  smtp_server_port=args['smtp_port'],
+                                  smtp_server_port=(args.get('smtp_port') or DEFAULT_SMTP_SSL_PORT),
                                   smtp_username=args['smtp_username'],
                                   smtp_password=args['smtp_password'],
                                   ssl_required=args['ssl_required'])
