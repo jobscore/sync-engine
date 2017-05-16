@@ -177,5 +177,5 @@ def create_account():
                 resp = simplejson.dumps({ 'message': 'Account verification failed', 'type': 'api_error' })
                 return make_response((resp, 422, { 'Content-Type': 'application/json' }))
         except NotSupportedError as e:
-            resp = simplejson.dumps({ 'message': str(e), type: 'custom_api_error' })
+            resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
             return make_response((resp, 400, { 'Content-Type': 'application/json' }))
