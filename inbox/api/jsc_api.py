@@ -12,6 +12,8 @@ from inbox.api.err import APIException, InputError, log_exception
 from inbox.auth.gmail import GmailAuthHandler
 from inbox.models import Account
 from inbox.auth.base import handler_from_provider
+from inbox.util.url import provider_from_address
+from inbox.providers import providers
 
 app = Blueprint(
     'jobscore_custom_api',
@@ -179,3 +181,23 @@ def create_account():
         except NotSupportedError as e:
             resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
             return make_response((resp, 400, { 'Content-Type': 'application/json' }))
+
+@app.route('/provider_from_email', methods=['get'])
+def provider_from_email():
+    g.parser.add_argument('email', required=True, type=bounded_str, location='args')
+    args = strict_parse_args(g.parser, request.args)
+
+    try:
+        provider_name = provider_from_address(args['email'])
+        provider_info = providers[provider_name] if provider_name != 'unknow' else 'unknow'
+
+        resp = simplejson.dumps({
+            'provider_name': provider_name,
+            'provider_info': provider_info
+        })
+
+        return make_response((resp, 200, { 'Content-Type': 'application/json' }))
+    except NotSupportedError as e:
+        resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
+        return make_response((resp, 400, { 'Content-Type': 'application/json' }))
+
