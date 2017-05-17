@@ -121,9 +121,9 @@ def auth_callback():
 
         return make_response( (resp, 201, { 'Content-Type': 'application/json' }))
 
-@app.route('/retry_sync', methods=['get'])
+@app.route('/retry_sync', methods=['POST'])
 def retry_sync():
-    g.parser.add_argument('namespace_public_id', required=True, type=valid_public_id, location='args')
+    g.parser.add_argument('namespace_public_id', required=True, type=valid_public_id, location='form')
 
     args = strict_parse_args(g.parser, request.args)
     shard = (args.get('target') or 0) >> 48
@@ -138,7 +138,9 @@ def retry_sync():
                 return make_response((resp, 400, { 'Content-Type': 'application/json' }))
 
             account = namespace.account
-            resp = json.dumps(account.sync_status, default=json_util.default)
+            resp = simplejson.dumps({
+                'error': account.sync_status['sync_error']
+            })
             account.sync_state = 'running'
             account.sync_should_run = True
             db_session.commit()
