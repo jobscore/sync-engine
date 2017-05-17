@@ -143,9 +143,6 @@ def create_account():
 
     with session_scope(shard) as db_session:
         account = db_session.query(Account).filter_by(email_address=args['email']).first()
-        if account is not None:
-            resp = simplejson.dumps({ 'message': 'Account already exists', 'type': 'custom_api_error' })
-            return make_response((resp, 400, { 'Content-Type': 'application/json' }))
 
         provider_auth_info = dict(provider='custom',
                                   email=args['email'],
@@ -160,7 +157,11 @@ def create_account():
                                   ssl_required=args['ssl_required'])
 
         auth_handler = handler_from_provider(provider_auth_info['provider'])
-        account = auth_handler.create_account(args['email'], provider_auth_info)
+
+        if account is None:
+            account = auth_handler.create_account(args['email'], provider_auth_info)
+        else:
+            account = account.auth_handler.update_account(account, provider_auth_info)
 
         try:
             resp = None
