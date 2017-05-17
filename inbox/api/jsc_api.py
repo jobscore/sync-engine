@@ -6,7 +6,7 @@ from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
 from inbox.api.validation import bounded_str, strict_parse_args, ValidatableArgument
-from inbox.basicauth import NotSupportedError
+from inbox.basicauth import NotSupportedError, ValidationError
 from inbox.models.session import session_scope
 from inbox.api.err import APIException, InputError, log_exception
 from inbox.auth.gmail import GmailAuthHandler
@@ -177,6 +177,9 @@ def create_account():
             else:
                 resp = simplejson.dumps({ 'message': 'Account verification failed', 'type': 'api_error' })
                 return make_response((resp, 422, { 'Content-Type': 'application/json' }))
+        except ValidationError as e:
+            resp = simplejson.dumps({ 'message': e.message.message, 'type': 'api_error' })
+            return make_response((resp, 422, { 'Content-Type': 'application/json' }))
         except NotSupportedError as e:
             resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
             return make_response((resp, 400, { 'Content-Type': 'application/json' }))
