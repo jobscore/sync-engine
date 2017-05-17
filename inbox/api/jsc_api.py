@@ -2,15 +2,17 @@ import sys
 import urllib
 import requests
 import simplejson
+import json
+from bson import json_util
 from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
-from inbox.api.validation import bounded_str, strict_parse_args, ValidatableArgument
+from inbox.api.validation import bounded_str, strict_parse_args, ValidatableArgument, valid_public_id
 from inbox.basicauth import NotSupportedError
 from inbox.models.session import session_scope
 from inbox.api.err import APIException, InputError, log_exception
 from inbox.auth.gmail import GmailAuthHandler
-from inbox.models import Account
+from inbox.models import Account, Namespace
 from inbox.auth.base import handler_from_provider
 
 app = Blueprint(
@@ -118,3 +120,30 @@ def auth_callback():
         })
 
         return make_response( (resp, 201, { 'Content-Type': 'application/json' }))
+
+@app.route('/retry_sync', methods=['get'])
+def retry_sync():
+    g.parser.add_argument('namespace_public_id', required=True, type=valid_public_id, location='args')
+
+    args = strict_parse_args(g.parser, request.args)
+    shard = (args.get('target') or 0) >> 48
+
+    with session_scope(shard) as db_session:
+        try:
+            namespace = db_session.query(Namespace) \
+                .filter(Namespace.public_id == args['namespace_public_id']).first()
+
+            if namespace is None:
+                resp = simplejson.dumps({ 'message': 'Namespace do not exists', 'type': 'custom_api_error' })
+                return make_response((resp, 400, { 'Content-Type': 'application/json' }))
+
+            account = namespace.account
+            resp = json.dumps(account.sync_status, default=json_util.default)
+            account.sync_state = 'running'
+            account.sync_should_run = True
+            db_session.commit()
+
+            return make_response((resp, 200, { 'Content-Type': 'application/json' }))
+        except NotSupportedError as e:
+            resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
+            return make_response((resp, 400, { 'Content-Type': 'application/json' }))
