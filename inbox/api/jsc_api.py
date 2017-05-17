@@ -189,7 +189,7 @@ def provider_from_email():
 
     try:
         provider_name = provider_from_address(args['email'])
-        provider_info = providers[provider_name] if provider_name != 'unknow' else 'unknow'
+        provider_info = providers[provider_name] if provider_name != 'unknown' else 'unknown'
 
         resp = simplejson.dumps({
             'provider_name': provider_name,
