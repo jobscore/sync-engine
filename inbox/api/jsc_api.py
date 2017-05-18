@@ -2,6 +2,8 @@ import sys
 import urllib
 import requests
 import simplejson
+import platform
+from datetime import datetime
 from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
@@ -10,8 +12,10 @@ from inbox.basicauth import NotSupportedError
 from inbox.models.session import session_scope
 from inbox.api.err import APIException, InputError, log_exception
 from inbox.auth.gmail import GmailAuthHandler
-from inbox.models import Account
+from inbox.models import Account, Namespace
 from inbox.auth.base import handler_from_provider
+from inbox.mailsync.service import SYNC_EVENT_QUEUE_NAME
+from inbox.scheduling.event_queue import EventQueue
 
 app = Blueprint(
     'jobscore_custom_api',
@@ -47,6 +51,35 @@ def handle_generic_error(error):
                              type='api_error')
     response.status_code = 500
     return response
+
+
+def notify_node():
+    process_identifier = '{}:{}'.format(platform.node(), 0)
+    private_queue = EventQueue(SYNC_EVENT_QUEUE_NAME.format(process_identifier))
+    private_queue.send_event({})
+
+
+@app.route('/suspend_sync')
+def suspend_sync():
+    g.parser.add_argument('account_id', required=True, type=bounded_str, location='args')
+    g.parser.add_argument('target', type=int, location='args')
+    args = strict_parse_args(g.parser, request.args)
+
+    shard = args.get('target', 0) >> 48
+    with session_scope(shard) as db_session:
+        namespace = db_session.query(Namespace).filter(Namespace.public_id==args['account_id']).first()
+        account = namespace.account
+
+        account.sync_should_run = False
+        account._sync_status['sync_disabled_reason'] = 'suspend_account API endpoint called'
+        account._sync_status['sync_disabled_on'] = datetime.utcnow()
+        account._sync_status['sync_disabled_by'] = 'api'
+
+        db_session.commit()
+
+    notify_node()
+
+    return make_response(('', 204, {}))
 
 
 @app.route('/auth_callback')
