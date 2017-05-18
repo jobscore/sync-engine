@@ -7,7 +7,7 @@ from bson import json_util
 from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
-from inbox.api.validation import bounded_str, strict_parse_args, ValidatableArgument, valid_public_id
+from inbox.api.validation import bounded_str, strict_parse_args, ValidatableArgument
 from inbox.basicauth import NotSupportedError
 from inbox.models.session import session_scope
 from inbox.api.err import APIException, InputError, log_exception
@@ -21,6 +21,7 @@ app = Blueprint(
     url_prefix='/c')
 
 app.log_exception = log_exception
+
 
 @app.before_request
 def start():
@@ -53,8 +54,7 @@ def handle_generic_error(error):
 
 @app.route('/auth_callback')
 def auth_callback():
-    g.parser.add_argument('authorization_code', type=bounded_str,
-        location='args', required=True)
+    g.parser.add_argument('authorization_code', type=bounded_str, location='args', required=True)
     g.parser.add_argument('email', required=True, type=bounded_str, location='args')
     g.parser.add_argument('target', type=int, location='args')
     args = strict_parse_args(g.parser, request.args)
@@ -99,7 +99,7 @@ def auth_callback():
         resp_dict['contacts'] = True
         resp_dict['events'] = True
 
-        auth_info = { 'provider': 'gmail' }
+        auth_info = {'provider': 'gmail'}
         auth_info.update(resp_dict)
 
         if updating_account:
@@ -119,11 +119,13 @@ def auth_callback():
             'namespace_id': account.namespace.public_id
         })
 
-        return make_response( (resp, 201, { 'Content-Type': 'application/json' }))
+        return make_response((resp, 201, {'Content-Type': 'application/json'}))
+
 
 @app.route('/retry_sync', methods=['POST'])
 def retry_sync():
-    g.parser.add_argument('namespace_public_id', required=True, type=valid_public_id, location='form')
+    g.parser.add_argument('target', type=int, location='args')
+    g.parser.add_argument('account_id', required=True, type=bounded_str, location='form')
 
     args = strict_parse_args(g.parser, request.args)
     shard = (args.get('target') or 0) >> 48
@@ -131,21 +133,19 @@ def retry_sync():
     with session_scope(shard) as db_session:
         try:
             namespace = db_session.query(Namespace) \
-                .filter(Namespace.public_id == args['namespace_public_id']).first()
+                .filter(Namespace.public_id == args['account_id']).first()
 
             if namespace is None:
-                resp = simplejson.dumps({ 'message': 'Namespace do not exists', 'type': 'custom_api_error' })
-                return make_response((resp, 400, { 'Content-Type': 'application/json' }))
+                resp = simplejson.dumps({'message': 'Namespace does not exist', 'type': 'custom_api_error'})
+                return make_response((resp, 400, {'Content-Type': 'application/json'}))
 
             account = namespace.account
-            resp = simplejson.dumps({
-                'error': account.sync_status['sync_error']
-            })
             account.sync_state = 'running'
             account.sync_should_run = True
             db_session.commit()
 
-            return make_response((resp, 200, { 'Content-Type': 'application/json' }))
+            resp = json.dumps(account.sync_status, default=json_util.default)
+            return make_response((resp, 200, {'Content-Type': 'application/json'}))
         except NotSupportedError as e:
-            resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
-            return make_response((resp, 400, { 'Content-Type': 'application/json' }))
+            resp = simplejson.dumps({'message': str(e), 'type': 'custom_api_error'})
+            return make_response((resp, 400, {'Content-Type': 'application/json'}))
