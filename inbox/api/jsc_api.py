@@ -69,10 +69,10 @@ def notify_node():
     private_queue.send_event({})
 
 
-@app.route('/suspend_sync')
+@app.route('/suspend_sync', methods=['POST'])
 def suspend_sync():
-    g.parser.add_argument('account_id', required=True, type=bounded_str, location='args')
-    g.parser.add_argument('target', type=int, location='args')
+    g.parser.add_argument('account_id', required=True, type=bounded_str, location='form')
+    g.parser.add_argument('target', type=int, location='form')
     args = strict_parse_args(g.parser, request.args)
 
     shard = args.get('target', 0) >> 48
