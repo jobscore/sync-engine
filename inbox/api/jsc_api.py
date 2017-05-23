@@ -3,6 +3,8 @@ import urllib
 import requests
 import simplejson
 import platform
+import json
+from bson import json_util
 from datetime import datetime
 from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
@@ -98,27 +100,31 @@ def enable_sync():
     shard = (args.get('target') or 0) >> 48
 
     with session_scope(shard) as db_session:
-        namespace = db_session.query(Namespace) \
-            .filter(Namespace.public_id == args['account_id']).first()
+        try:
+            namespace = db_session.query(Namespace) \
+                .filter(Namespace.public_id == args['account_id']).first()
 
-        if namespace is None:
-            resp = simplejson.dumps({'message': 'Namespace does not exist', 'type': 'custom_api_error'})
+            if namespace is None:
+                resp = simplejson.dumps({'message': 'Namespace does not exist', 'type': 'custom_api_error'})
+                return make_response((resp, 400, {'Content-Type': 'application/json'}))
+
+            account = namespace.account
+            account.sync_state = 'running'
+            account.sync_should_run = True
+            account.sync_host = '{}:{}'.format(platform.node(), 0)
+
+            creds = account.auth_credentials
+            for c in creds:
+                c.is_valid = True
+
+            db_session.commit()
+            notify_node()
+
+            resp = json.dumps(account.sync_status, default=json_util.default)
+            return make_response((resp, 200, {'Content-Type': 'application/json'}))
+        except NotSupportedError as e:
+            resp = simplejson.dumps({'message': str(e), 'type': 'custom_api_error'})
             return make_response((resp, 400, {'Content-Type': 'application/json'}))
-
-        account = namespace.account
-        account.sync_state = 'running'
-        account.sync_should_run = True
-        account.sync_host = '{}:{}'.format(platform.node(), 0)
-
-        creds = account.auth_credentials
-        for c in creds:
-            c.is_valid = True
-
-        db_session.commit()
-
-    notify_node()
-
-    return make_response(('', 204, {}))
 
 
 @app.route('/auth_callback')
