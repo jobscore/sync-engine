@@ -2,8 +2,6 @@ import sys
 import urllib
 import requests
 import simplejson
-import json
-from bson import json_util
 import platform
 from datetime import datetime
 from flask import request, g, Blueprint, make_response
@@ -216,11 +214,11 @@ def create_account():
         provider_auth_info = dict(provider='custom',
                                   email=args['email'],
                                   imap_server_host=args['imap_host'],
-                                  imap_server_port=args.get('imap_port', DEFAULT_IMAP_SSL_PORT),
+                                  imap_server_port=(args.get('imap_port') or DEFAULT_IMAP_SSL_PORT),
                                   imap_username=args['imap_username'],
                                   imap_password=args['imap_password'],
                                   smtp_server_host=args['smtp_host'],
-                                  smtp_server_port=args.get('smtp_port', DEFAULT_SMTP_SSL_PORT),
+                                  smtp_server_port=(args.get('smtp_port') or DEFAULT_SMTP_SSL_PORT),
                                   smtp_username=args['smtp_username'],
                                   smtp_password=args['smtp_password'],
                                   ssl_required=args['ssl_required'])
