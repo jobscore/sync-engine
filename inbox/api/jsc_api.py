@@ -2,6 +2,10 @@ import sys
 import urllib
 import requests
 import simplejson
+import platform
+import json
+from bson import json_util
+from datetime import datetime
 from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
@@ -10,10 +14,12 @@ from inbox.basicauth import NotSupportedError, ValidationError
 from inbox.models.session import session_scope
 from inbox.api.err import APIException, InputError, log_exception
 from inbox.auth.gmail import GmailAuthHandler
-from inbox.models import Account
+from inbox.models import Account, Namespace
 from inbox.auth.base import handler_from_provider
 from inbox.util.url import provider_from_address
 from inbox.providers import providers
+from inbox.mailsync.service import SYNC_EVENT_QUEUE_NAME
+from inbox.scheduling.event_queue import EventQueue
 
 app = Blueprint(
     'jobscore_custom_api',
@@ -26,6 +32,7 @@ DEFAULT_IMAP_PORT = 143
 DEFAULT_IMAP_SSL_PORT = 993
 DEFAULT_SMTP_PORT = 25
 DEFAULT_SMTP_SSL_PORT = 465
+
 
 @app.before_request
 def start():
@@ -56,10 +63,73 @@ def handle_generic_error(error):
     return response
 
 
+def notify_node():
+    process_identifier = '{}:{}'.format(platform.node(), 0)
+    private_queue = EventQueue(SYNC_EVENT_QUEUE_NAME.format(process_identifier))
+    private_queue.send_event({})
+
+
+@app.route('/suspend_sync', methods=['POST'])
+def suspend_sync():
+    g.parser.add_argument('account_id', required=True, type=bounded_str, location='form')
+    g.parser.add_argument('target', type=int, location='form')
+    args = strict_parse_args(g.parser, request.args)
+
+    shard = args.get('target', 0) >> 48
+    with session_scope(shard) as db_session:
+        namespace = db_session.query(Namespace).filter(Namespace.public_id==args['account_id']).first()
+        account = namespace.account
+
+        account.sync_should_run = False
+        account._sync_status['sync_disabled_reason'] = 'suspend_account API endpoint called'
+        account._sync_status['sync_disabled_on'] = datetime.utcnow()
+        account._sync_status['sync_disabled_by'] = 'api'
+
+        db_session.commit()
+
+    notify_node()
+
+    return make_response(('', 204, {}))
+
+@app.route('/enable_sync', methods=['POST'])
+def enable_sync():
+    g.parser.add_argument('target', type=int, location='args')
+    g.parser.add_argument('account_id', required=True, type=bounded_str, location='form')
+
+    args = strict_parse_args(g.parser, request.args)
+    shard = (args.get('target') or 0) >> 48
+
+    with session_scope(shard) as db_session:
+        try:
+            namespace = db_session.query(Namespace) \
+                .filter(Namespace.public_id == args['account_id']).first()
+
+            if namespace is None:
+                resp = simplejson.dumps({'message': 'Namespace does not exist', 'type': 'custom_api_error'})
+                return make_response((resp, 400, {'Content-Type': 'application/json'}))
+
+            account = namespace.account
+            account.sync_state = 'running'
+            account.sync_should_run = True
+            account.sync_host = '{}:{}'.format(platform.node(), 0)
+
+            creds = account.auth_credentials
+            for c in creds:
+                c.is_valid = True
+
+            db_session.commit()
+            notify_node()
+
+            resp = json.dumps(account.sync_status, default=json_util.default)
+            return make_response((resp, 200, {'Content-Type': 'application/json'}))
+        except NotSupportedError as e:
+            resp = simplejson.dumps({'message': str(e), 'type': 'custom_api_error'})
+            return make_response((resp, 400, {'Content-Type': 'application/json'}))
+
+
 @app.route('/auth_callback')
 def auth_callback():
-    g.parser.add_argument('authorization_code', type=bounded_str,
-        location='args', required=True)
+    g.parser.add_argument('authorization_code', type=bounded_str, location='args', required=True)
     g.parser.add_argument('email', required=True, type=bounded_str, location='args')
     g.parser.add_argument('target', type=int, location='args')
     args = strict_parse_args(g.parser, request.args)
@@ -104,7 +174,7 @@ def auth_callback():
         resp_dict['contacts'] = True
         resp_dict['events'] = True
 
-        auth_info = { 'provider': 'gmail' }
+        auth_info = {'provider': 'gmail'}
         auth_info.update(resp_dict)
 
         if updating_account:
@@ -124,7 +194,8 @@ def auth_callback():
             'namespace_id': account.namespace.public_id
         })
 
-        return make_response( (resp, 201, { 'Content-Type': 'application/json' }))
+        return make_response((resp, 201, {'Content-Type': 'application/json'}))
+
 
 @app.route('/create_account', methods=['POST'])
 def create_account():
@@ -186,6 +257,7 @@ def create_account():
             resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
             return make_response((resp, 400, { 'Content-Type': 'application/json' }))
 
+
 @app.route('/provider_from_email', methods=['get'])
 def provider_from_email():
     g.parser.add_argument('email', required=True, type=bounded_str, location='args')
@@ -204,4 +276,3 @@ def provider_from_email():
     except NotSupportedError as e:
         resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
         return make_response((resp, 400, { 'Content-Type': 'application/json' }))
-
