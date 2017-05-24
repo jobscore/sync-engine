@@ -6,6 +6,7 @@ import platform
 import json
 from bson import json_util
 from datetime import datetime
+from socket import gaierror
 from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
@@ -33,6 +34,9 @@ DEFAULT_IMAP_SSL_PORT = 993
 DEFAULT_SMTP_PORT = 25
 DEFAULT_SMTP_SSL_PORT = 465
 
+def unprocessable_entity_response(message):
+    json = simplejson.dumps({ 'message': message, 'type': 'custom_api_error' })
+    return make_response((json, 422, { 'Content-Type': 'application/json' }))
 
 @app.before_request
 def start():
@@ -251,8 +255,12 @@ def create_account():
                 resp = simplejson.dumps({ 'message': 'Account verification failed', 'type': 'api_error' })
                 return make_response((resp, 422, { 'Content-Type': 'application/json' }))
         except ValidationError as e:
-            resp = simplejson.dumps({ 'message': e.message.message, 'type': 'api_error' })
-            return make_response((resp, 422, { 'Content-Type': 'application/json' }))
+            return unprocessable_entity_response(e.message.message)
+        except gaierror as error:
+            if error[1] == 'Name or service not known':
+                return unprocessable_entity_response(error[1])
+            else:
+                raise error
         except NotSupportedError as e:
             resp = simplejson.dumps({ 'message': str(e), 'type': 'custom_api_error' })
             return make_response((resp, 400, { 'Content-Type': 'application/json' }))
