@@ -181,16 +181,21 @@ color '35;1' 'Ensuring setuptools and pip versions...'
 pip install 'pyparsing==2.2.0'
 # If python-setuptools is actually the old 'distribute' fork of setuptools,
 # then the first 'pip install setuptools' will be a no-op.
+color '35;1' 'Reinstall PIP 1'
 pip install 'pip==9.0.1' 'setuptools==34.3.1'
 hash pip        # /usr/bin/pip might now be /usr/local/bin/pip
+color '35;1' 'Reinstall PIP 2'
 pip install 'pip==9.0.1' 'setuptools==34.3.1'
 
+color '35;1' 'Fix replacement'
 if [[ "$CI" != "true" ]]; then
   sed -i '59s/MARKER_EXPR()/MARKER_EXPR("")/g' /usr/local/lib/python2.7/dist-packages/packaging/requirements.py
 fi
 
+color '35;1' 'Install pyasn and setuptools'
 easy_install -U pyasn1 setuptools
 
+color '35;1' 'Remove problematic symlink'
 # Doing pip upgrade setuptools leaves behind this problematic symlink
 rm -rf /usr/lib/python2.7/dist-packages/setuptools.egg-info
 
