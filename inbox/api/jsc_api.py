@@ -79,7 +79,7 @@ def suspend_sync():
     g.parser.add_argument('target', type=int, location='form')
     args = strict_parse_args(g.parser, request.args)
 
-    shard = args.get('target', 0) >> 48
+    shard = (args.get('target') or 0) >> 48
     with session_scope(shard) as db_session:
         namespace = db_session.query(Namespace).filter(Namespace.public_id==args['account_id']).first()
         account = namespace.account
