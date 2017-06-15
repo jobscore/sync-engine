@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+from inbox.config import config
+from datetime import datetime, timedelta
+import time
+import os
+import sys
+
+if len(sys.argv) > 1:
+  max_size = int(sys.argv[1]) * 1024 * 1024
+
+min_allowed_size = 1024 * 1024 * 1024 * 4 # 4 GB
+max_allowed_size = 1024 * 1024 * 1024 * 1024 # 1 TB
+
+if len(sys.argv) < 2 or max_size < min_allowed_size or max_size > max_allowed_size:
+  print('Missing max_size argument')
+  print('Usage: disk-cleanup <max_size>')
+  print('  max_size: Keep at most max_size MB of files.')
+  print('            (4GB <= max_size < 1TB)')
+  sys.exit(1)
+
+print('Keeping at most %d MB of files' % (max_size / (1024 *1024)))
+
+parts_dir = config.get_required('MSG_PARTS_DIRECTORY')
+print('Walking "%s"' % parts_dir)
+
+all_files = []
+total_size = 0
+
+for (root, folders, files) in os.walk(parts_dir):
+  for file_name in files:
+    full_path = os.path.join(root, file_name)
+    if not os.path.isfile(full_path):
+      continue
+
+    st = os.stat(full_path)
+    all_files.append((st.st_ctime, full_path, st.st_size))
+    total_size += st.st_size
+
+    if (len(all_files) % 1000) == 0:
+      print('Scanning %d files (%d mb)...' % (len(all_files), total_size / (1024 * 1024)))
+
+print('Scanned %d files (%d mb)' % (len(all_files), total_size / (1024 * 1024)))
+print('Sorting...')
+all_files.sort(key=lambda x: x[0])
+print('Sorted')
+
+marked_for_deletion = []
+
+summed_size = 0
+for (_, full_path, file_size) in all_files:
+  summed_size += file_size
+  if summed_size > max_size:
+    marked_for_deletion.append((file_size, full_path))
+
+print('Will delete %d files (%d mb)' % (len(marked_for_deletion), reduce(lambda x, y: x + y[0], marked_for_deletion, 0)/(1024*1024)))
+for (file_size, full_path) in marked_for_deletion:
+  os.unlink(full_path)
+
+print('Done')
