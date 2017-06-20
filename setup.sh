@@ -176,23 +176,22 @@ if ! ${prod}; then
 fi
 
 color '35;1' 'Ensuring setuptools and pip versions...'
+
 # Need up-to-date pyparsing or upgrading pip will break pip
 # https://github.com/pypa/packaging/issues/94
 pip install 'pyparsing==2.2.0'
-# If python-setuptools is actually the old 'distribute' fork of setuptools,
-# then the first 'pip install setuptools' will be a no-op.
-pip install 'pip==9.0.1' 'setuptools==34.3.1'
+
+pip install 'pip==9.0.1'
 hash pip        # /usr/bin/pip might now be /usr/local/bin/pip
-pip install 'pip==9.0.1' 'setuptools==34.3.1'
+pip install 'setuptools==34.3.1'
 
-if [[ "$CI" != "true" ]]; then
-  sed -i '59s/MARKER_EXPR()/MARKER_EXPR("")/g' /usr/local/lib/python2.7/dist-packages/packaging/requirements.py
-fi
+rm -rf /usr/lib/python2.7/dist-packages/setuptools.egg-info
 
-easy_install -U pyasn1 setuptools
+# if [[ "$CI" != "true" ]]; then
+#   sed -i '59s/MARKER_EXPR()/MARKER_EXPR("")/g' /usr/local/lib/python2.7/dist-packages/packaging/requirements.py
+# fi
 
 # Doing pip upgrade setuptools leaves behind this problematic symlink
-rm -rf /usr/lib/python2.7/dist-packages/setuptools.egg-info
 
 # Install tox for running tests
 pip install 'tox'
@@ -283,8 +282,8 @@ if ! $prod; then
     mysqld_safe &
     sleep 10
 
-    env NYLAS_ENV=dev bin/create-db
-    env NYLAS_ENV=dev bin/create-test-db
+    env PYTHONPATH="$src_dir" NYLAS_ENV=dev bin/create-db
+    env PYTHONPATH="$src_dir" NYLAS_ENV=dev bin/create-test-db
 fi
 
 if [[ $(mysql --version) != *"5.6"* ]]
