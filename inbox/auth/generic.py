@@ -349,6 +349,7 @@ def _auth_is_invalid(exc):
         'LOGIN bad',  # LOGIN bad username or password
         '[AUTHORIZATIONFAILED]',
         'incorrect password',
+        'LOGIN failed.',
     )
     return any(exc.message.lower().startswith(msg.lower()) for msg in
                AUTH_INVALID_PREFIXES)
