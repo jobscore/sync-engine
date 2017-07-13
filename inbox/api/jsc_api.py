@@ -117,9 +117,10 @@ def enable_sync():
             account.sync_should_run = True
             account.sync_host = '{}:{}'.format(platform.node(), 0)
 
-            creds = account.auth_credentials
-            for c in creds:
-                c.is_valid = True
+            if account.provider == 'gmail':
+                creds = account.auth_credentials
+                for c in creds:
+                    c.is_valid = True
 
             db_session.commit()
             notify_node()
