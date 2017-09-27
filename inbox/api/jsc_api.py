@@ -171,7 +171,7 @@ def auth_callback():
         validation_dict = auth_handler.validate_token(access_token)
         userinfo_dict = auth_handler._get_user_info(access_token)
 
-        if userinfo_dict['email'] != args['email']:
+        if userinfo_dict['email'].lower() != args['email'].lower():
             raise InputError('Email mismatch')
 
         resp_dict.update(validation_dict)
