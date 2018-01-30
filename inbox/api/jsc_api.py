@@ -19,7 +19,7 @@ from inbox.models import Account, Namespace
 from inbox.auth.base import handler_from_provider
 from inbox.util.url import provider_from_address
 from inbox.providers import providers
-from inbox.mailsync.service import SYNC_EVENT_QUEUE_NAME
+from inbox.mailsync.service import shared_sync_event_queue_for_zone
 from inbox.scheduling.event_queue import EventQueue
 
 app = Blueprint(
@@ -67,11 +67,9 @@ def handle_generic_error(error):
     return response
 
 
-def notify_node():
-    process_identifier = '{}:{}'.format(platform.node(), 0)
-    private_queue = EventQueue(SYNC_EVENT_QUEUE_NAME.format(process_identifier))
-    private_queue.send_event({})
-
+def notify_node(account_id):
+    shared_queue = shared_sync_event_queue_for_zone(None)
+    shared_queue.send_event({ 'event': 'account_changed', 'id': account_id })
 
 @app.route('/suspend_sync', methods=['POST'])
 def suspend_sync():
@@ -90,8 +88,7 @@ def suspend_sync():
         account._sync_status['sync_disabled_by'] = 'api'
 
         db_session.commit()
-
-    notify_node()
+        notify_node(account.id)
 
     return make_response(('', 204, {}))
 
@@ -123,7 +120,7 @@ def enable_sync():
                     c.is_valid = True
 
             db_session.commit()
-            notify_node()
+            notify_node(account.id)
 
             resp = json.dumps(account.sync_status, default=json_util.default)
             return make_response((resp, 200, {'Content-Type': 'application/json'}))
