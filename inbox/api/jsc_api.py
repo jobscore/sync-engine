@@ -2,7 +2,6 @@ import sys
 import urllib
 import requests
 import simplejson
-import platform
 import json
 from bson import json_util
 from datetime import datetime
@@ -20,7 +19,7 @@ from inbox.auth.base import handler_from_provider
 from inbox.util.url import provider_from_address
 from inbox.providers import providers
 from inbox.mailsync.service import shared_sync_event_queue_for_zone
-from inbox.scheduling.event_queue import EventQueue
+from inbox.config import config
 
 app = Blueprint(
     'jobscore_custom_api',
@@ -35,8 +34,8 @@ DEFAULT_SMTP_PORT = 25
 DEFAULT_SMTP_SSL_PORT = 465
 
 def unprocessable_entity_response(message):
-    json = simplejson.dumps({ 'message': message, 'type': 'custom_api_error' })
-    return make_response((json, 422, { 'Content-Type': 'application/json' }))
+    response = simplejson.dumps({ 'message': message, 'type': 'custom_api_error' })
+    return make_response((response, 422, { 'Content-Type': 'application/json' }))
 
 @app.before_request
 def start():
@@ -66,11 +65,6 @@ def handle_generic_error(error):
     response.status_code = 500
     return response
 
-
-def notify_node(account_id):
-    shared_queue = shared_sync_event_queue_for_zone(None)
-    shared_queue.send_event({ 'event': 'account_changed', 'id': account_id })
-
 @app.route('/suspend_sync', methods=['POST'])
 def suspend_sync():
     g.parser.add_argument('account_id', required=True, type=valid_public_id, location='form')
@@ -88,7 +82,9 @@ def suspend_sync():
         account._sync_status['sync_disabled_by'] = 'api'
 
         db_session.commit()
-        notify_node(account.id)
+
+        shared_queue = shared_sync_event_queue_for_zone(config.get('ZONE'))
+        shared_queue.send_event({ 'event': 'sync_suspended', 'id': account.id })
 
     return make_response(('', 204, {}))
 
@@ -112,7 +108,6 @@ def enable_sync():
             account = namespace.account
             account.sync_state = 'running'
             account.sync_should_run = True
-            account.sync_host = '{}:{}'.format(platform.node(), 0)
 
             if account.provider == 'gmail':
                 creds = account.auth_credentials
@@ -120,7 +115,6 @@ def enable_sync():
                     c.is_valid = True
 
             db_session.commit()
-            notify_node(account.id)
 
             resp = json.dumps(account.sync_status, default=json_util.default)
             return make_response((resp, 200, {'Content-Type': 'application/json'}))
