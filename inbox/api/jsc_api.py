@@ -68,12 +68,12 @@ def handle_generic_error(error):
 @app.route('/suspend_sync', methods=['POST'])
 def suspend_sync():
     g.parser.add_argument('account_id', required=True, type=valid_public_id, location='form')
-    g.parser.add_argument('target', type=int, location='form')
     args = strict_parse_args(g.parser, request.args)
 
-    shard = (args.get('target') or 0) >> 48
-    with session_scope(shard) as db_session:
-        namespace = db_session.query(Namespace).filter(Namespace.public_id==args['account_id']).first()
+    namespace_id = args['account_id']
+
+    with session_scope(namespace_id) as db_session:
+        namespace = db_session.query(Namespace).filter(Namespace.public_id == namespace_id).first()
         account = namespace.account
 
         account.sync_should_run = False
@@ -90,16 +90,15 @@ def suspend_sync():
 
 @app.route('/enable_sync', methods=['POST'])
 def enable_sync():
-    g.parser.add_argument('target', type=int, location='form')
     g.parser.add_argument('account_id', required=True, type=valid_public_id, location='form')
-
     args = strict_parse_args(g.parser, request.args)
-    shard = (args.get('target') or 0) >> 48
 
-    with session_scope(shard) as db_session:
+    namespace_id = args['account_id']
+
+    with session_scope(namespace_id) as db_session:
         try:
             namespace = db_session.query(Namespace) \
-                .filter(Namespace.public_id == args['account_id']).first()
+                .filter(Namespace.public_id == namespace_id).first()
 
             if namespace is None:
                 resp = simplejson.dumps({'message': 'Namespace does not exist', 'type': 'custom_api_error'})
