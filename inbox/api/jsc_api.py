@@ -129,9 +129,9 @@ def auth_callback():
     g.parser.add_argument('target', type=int, location='args')
     args = strict_parse_args(g.parser, request.args)
 
-    shard = args.get('target', 0) >> 48
+    target = args.get('target') or 0
 
-    with session_scope(shard) as db_session:
+    with session_scope(target) as db_session:
         account = db_session.query(Account).filter_by(email_address=args['email']).first()
 
         updating_account = False
@@ -194,7 +194,7 @@ def auth_callback():
 
 @app.route('/create_account', methods=['POST'])
 def create_account():
-    g.parser.add_argument('target', type=int, location='args')
+    g.parser.add_argument('target', type=int, location='form')
     g.parser.add_argument('email', required=True, type=bounded_str, location='form')
     g.parser.add_argument('smtp_host', required=True, type=bounded_str, location='form')
     g.parser.add_argument('smtp_port', type=int, location='form')
@@ -207,9 +207,9 @@ def create_account():
     g.parser.add_argument('ssl_required', required=True, type=bool, location='form')
 
     args = strict_parse_args(g.parser, request.args)
-    shard = (args.get('target') or 0) >> 48
+    target = args.get('target') or 0
 
-    with session_scope(shard) as db_session:
+    with session_scope(target) as db_session:
         account = db_session.query(Account).filter_by(email_address=args['email']).first()
 
         provider_auth_info = dict(provider='custom',
