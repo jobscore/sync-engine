@@ -76,8 +76,6 @@ apt-get -y install git \
                    mercurial \
                    wget \
                    supervisor \
-                   mysql-server \
-                   mysql-client \
                    python \
                    python-dev \
                    python-pip \
