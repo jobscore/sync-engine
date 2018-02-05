@@ -1,3 +1,6 @@
+sudo: required
+dist: trusty
+
 cache:
   directories:
     - /home/travis/virtualenv
