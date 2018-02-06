@@ -1,3 +1,8 @@
+sudo: required
+dist: trusty
+services:
+  - mysql
+
 cache:
   directories:
     - /home/travis/virtualenv
