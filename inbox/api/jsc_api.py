@@ -11,7 +11,7 @@ from flask import jsonify as flask_jsonify
 from flask.ext.restful import reqparse
 from inbox.api.validation import valid_public_id, bounded_str, strict_parse_args, ValidatableArgument
 from inbox.basicauth import NotSupportedError, ValidationError
-from inbox.models.session import session_scope
+from inbox.models.session import session_scope, global_session_scope
 from inbox.api.err import APIException, InputError, log_exception
 from inbox.auth.gmail import GmailAuthHandler
 from inbox.models import Account, Namespace
@@ -70,10 +70,15 @@ def suspend_sync():
     g.parser.add_argument('account_id', required=True, type=valid_public_id, location='form')
     args = strict_parse_args(g.parser, request.args)
 
-    namespace_id = args['account_id']
+    namespace_public_id = args['account_id']
+    with global_session_scope() as db_session:
+        namespace = db_session.query(Namespace) \
+          .filter(Namespace.public_id == namespace_public_id).one()
+        namespace_id = namespace.id
 
     with session_scope(namespace_id) as db_session:
-        namespace = db_session.query(Namespace).filter(Namespace.public_id == namespace_id).first()
+        namespace = db_session.query(Namespace) \
+            .filter(Namespace.public_id == namespace_public_id).one()
         account = namespace.account
 
         account.sync_should_run = False
@@ -93,12 +98,16 @@ def enable_sync():
     g.parser.add_argument('account_id', required=True, type=valid_public_id, location='form')
     args = strict_parse_args(g.parser, request.args)
 
-    namespace_id = args['account_id']
+    namespace_public_id = args['account_id']
+    with global_session_scope() as db_session:
+        namespace = db_session.query(Namespace) \
+            .filter(Namespace.public_id == namespace_public_id).one()
+        namespace_id = namespace.id
 
     with session_scope(namespace_id) as db_session:
         try:
             namespace = db_session.query(Namespace) \
-                .filter(Namespace.public_id == namespace_id).first()
+                .filter(Namespace.public_id == namespace_public_id).one()
 
             if namespace is None:
                 resp = simplejson.dumps({'message': 'Namespace does not exist', 'type': 'custom_api_error'})
