@@ -98,6 +98,12 @@ apt-get -y install git \
                    lua5.2 \
                    liblua5.2-dev \
 
+if [ "$CI" != "true" ];
+then
+    color '35;1' 'Not on CI. Installing mysql packages...'
+    apt-get -y install mysql-server mysql-client
+fi
+
 # Switch to a temporary directory to install dependencies, since the source
 # directory might be mounted from a VM host with weird permissions.
 src_dir=$(pwd)
