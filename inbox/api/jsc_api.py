@@ -37,6 +37,14 @@ def unprocessable_entity_response(message):
     response = simplejson.dumps({ 'message': message, 'type': 'custom_api_error' })
     return make_response((response, 422, { 'Content-Type': 'application/json' }))
 
+def find_account_shard(email_address):
+    with global_session_scope() as db_session:
+        account = db_session.query(Account).filter_by(email_address=email_address).first()
+        if account is not None:
+            return account.id
+
+    return None
+
 @app.before_request
 def start():
     request.environ['log_context'] = {
@@ -135,10 +143,11 @@ def enable_sync():
 def auth_callback():
     g.parser.add_argument('authorization_code', type=bounded_str, location='args', required=True)
     g.parser.add_argument('email', required=True, type=bounded_str, location='args')
-    g.parser.add_argument('target', type=int, location='args')
     args = strict_parse_args(g.parser, request.args)
 
-    target = args.get('target') or 0
+    target = find_account_shard(args['email'])
+    if target is None:
+        target = config.get('NEW_ACCOUNTS_DEFAULT_SHARD', 0) << 48
 
     with session_scope(target) as db_session:
         account = db_session.query(Account).filter_by(email_address=args['email']).first()
@@ -200,10 +209,8 @@ def auth_callback():
 
         return make_response((resp, 201, {'Content-Type': 'application/json'}))
 
-
 @app.route('/create_account', methods=['POST'])
 def create_account():
-    g.parser.add_argument('target', type=int, location='form')
     g.parser.add_argument('email', required=True, type=bounded_str, location='form')
     g.parser.add_argument('smtp_host', required=True, type=bounded_str, location='form')
     g.parser.add_argument('smtp_port', type=int, location='form')
@@ -214,9 +221,11 @@ def create_account():
     g.parser.add_argument('imap_username', required=True, type=bounded_str, location='form')
     g.parser.add_argument('imap_password', required=True, type=bounded_str, location='form')
     g.parser.add_argument('ssl_required', required=True, type=bool, location='form')
-
     args = strict_parse_args(g.parser, request.args)
-    target = args.get('target') or 0
+
+    target = find_account_shard(args['email'])
+    if target is None:
+        target = config.get('NEW_ACCOUNTS_DEFAULT_SHARD', 0) << 48
 
     with session_scope(target) as db_session:
         account = db_session.query(Account).filter_by(email_address=args['email']).first()
