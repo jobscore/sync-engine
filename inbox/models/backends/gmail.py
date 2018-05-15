@@ -62,12 +62,9 @@ class GTokenManager(object):
         try:
             gtoken = account.new_token(scope)
         except (ConnectionError, OAuthError):
-            if object_session(account):
-                object_session(account).commit()
-            else:
-                with session_scope(account.id) as db_session:
-                    db_session.merge(account)
-                    db_session.commit()
+            with session_scope(account.id) as db_session:
+                db_session.merge(account)
+                db_session.commit()
             raise
 
         self.cache_token(account, gtoken)

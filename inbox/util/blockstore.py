@@ -14,7 +14,7 @@ if STORE_MSG_ON_S3:
     import boto
     from boto.s3.connection import S3Connection
     from boto.s3.key import Key
-# else:
+else:
     from inbox.util.file import mkdirp
 
     def _data_file_directory(h):
@@ -81,7 +81,7 @@ def _save_to_s3_bucket(data_sha256, bucket_name, data):
 
 def get_from_blockstore(data_sha256):
     if STORE_MSG_ON_S3:
-        value = _get_from_disk_or_s3(data_sha256)
+        value = _get_from_s3(data_sha256)
     else:
         value = _get_from_disk(data_sha256)
 
@@ -93,42 +93,6 @@ def get_from_blockstore(data_sha256):
     assert data_sha256 == sha256(value).hexdigest(), \
         "Returned data doesn't match stored hash!"
     return value
-
-
-def _get_from_disk_or_s3(data_sha256):
-    assert 'AWS_ACCESS_KEY_ID' in config, 'Need AWS key!'
-    assert 'AWS_SECRET_ACCESS_KEY' in config, 'Need AWS secret!'
-    assert 'TEMP_MESSAGE_STORE_BUCKET_NAME' in config, \
-        'Need temp bucket name to store message data!'
-
-    if not data_sha256:
-        return None
-
-    conn = S3Connection(config.get('AWS_ACCESS_KEY_ID'),
-                        config.get('AWS_SECRET_ACCESS_KEY'))
-
-    bucket_name = config.get('TEMP_MESSAGE_STORE_BUCKET_NAME')
-    bucket = conn.get_bucket(bucket_name, validate=False)
-
-    key = bucket.get_key(data_sha256)
-    if key:
-        return key.get_contents_as_string()
-
-    filedata = None
-    try:
-        with open(_data_file_path(data_sha256), 'rb') as f:
-            filedata = f.read()
-    except IOError:
-        log.info('File not on disk not S3: {}!'.format(data_sha256))
-        return None
-
-    # If data was on disk but not on S3, then migrate it to S3
-    log.info('File found on disk! Sending to S3 before serving!',
-        data_sha256=data_sha256)
-
-    _save_to_s3(data_sha256, filedata)
-    return filedata
-
 
 def _get_from_s3(data_sha256):
     assert 'AWS_ACCESS_KEY_ID' in config, 'Need AWS key!'
