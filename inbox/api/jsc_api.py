@@ -4,7 +4,7 @@ import requests
 import simplejson
 import json
 from bson import json_util
-from datetime import datetime
+from datetime import datetime, timedelta
 from socket import gaierror
 from flask import request, g, Blueprint, make_response
 from flask import jsonify as flask_jsonify
@@ -106,31 +106,33 @@ def enable_sync():
     g.parser.add_argument('account_id', required=True, type=valid_public_id, location='form')
     args = strict_parse_args(g.parser, request.args)
 
+    account_id = None
+
     namespace_public_id = args['account_id']
     with global_session_scope() as db_session:
         namespace = db_session.query(Namespace) \
             .filter(Namespace.public_id == namespace_public_id).one()
-        namespace_id = namespace.id
+        account_id = namespace.account.id
 
-    with session_scope(namespace_id) as db_session:
+    with session_scope(account_id) as db_session:
         try:
-            namespace = db_session.query(Namespace) \
-                .filter(Namespace.public_id == namespace_public_id).one()
+            account = db_session.query(Account).with_for_update() \
+                .filter(Account.id == account_id).one()
 
-            if namespace is None:
-                resp = simplejson.dumps({'message': 'Namespace does not exist', 'type': 'custom_api_error'})
-                return make_response((resp, 400, {'Content-Type': 'application/json'}))
+            lease_period = timedelta(minutes=1)
+            time_ended = account.sync_status.get('sync_end_time')
+            time_now = datetime.utcnow()
 
-            account = namespace.account
-            account.sync_state = 'running'
-            account.sync_should_run = True
+            if account.sync_host is None and account.sync_state != 'running' \
+                and (time_ended is None or time_now > time_ended + lease_period):
+                account.sync_should_run = True
 
-            if account.provider == 'gmail':
-                creds = account.auth_credentials
-                for c in creds:
-                    c.is_valid = True
+                if account.provider == 'gmail':
+                    creds = account.auth_credentials
+                    for c in creds:
+                        c.is_valid = True
 
-            db_session.commit()
+                db_session.commit()
 
             resp = json.dumps(account.sync_status, default=json_util.default)
             return make_response((resp, 200, {'Content-Type': 'application/json'}))
