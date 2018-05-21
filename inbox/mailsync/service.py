@@ -231,11 +231,12 @@ class SyncService(object):
                 return False
 
             try:
+                monitors = list()
                 acc.sync_host = self.process_identifier
                 if acc.sync_email:
                     monitor = self.monitor_cls_for[acc.provider](acc)
                     self.email_sync_monitors[acc.id] = monitor
-                    monitor.start()
+                    monitors.append(monitor)
 
                 info = acc.provider_info
                 if info.get('contacts', None) and acc.sync_contacts:
@@ -244,7 +245,7 @@ class SyncService(object):
                                                acc.id,
                                                acc.namespace.id)
                     self.contact_sync_monitors[acc.id] = contact_sync
-                    contact_sync.start()
+                    monitors.append(contact_sync)
 
                 if info.get('events', None) and acc.sync_events:
                     if (USE_GOOGLE_PUSH_NOTIFICATIONS and
@@ -259,7 +260,7 @@ class SyncService(object):
                                                acc.id,
                                                acc.namespace.id)
                     self.event_sync_monitors[acc.id] = event_sync
-                    event_sync.start()
+                    monitors.append(event_sync)
 
                 acc.sync_started()
                 self.syncing_accounts.add(acc.id)
@@ -267,6 +268,11 @@ class SyncService(object):
                 # statsd_client.gauge('mailsync.sync_hosts_counts.{}'.format(acc.id), 1, delta=True)
                 db_session.commit()
                 self.log.info('Sync started', account_id=account_id,
+                              sync_host=acc.sync_host)
+
+                for monitor in monitors:
+                    monitor.start()
+                self.log.info('Monitors started', account_id=account_id,
                               sync_host=acc.sync_host)
             except Exception:
                 self.log.error('Error starting sync', exc_info=True,
