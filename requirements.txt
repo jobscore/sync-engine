@@ -1,3 +1,4 @@
+certifi==2018.10.15
 nylas-production-python>=0.4.3
 coverage==4.2
 httplib2==0.8
