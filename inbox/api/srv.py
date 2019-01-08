@@ -5,8 +5,7 @@ from werkzeug.exceptions import default_exceptions, HTTPException
 from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.api.kellogs import APIEncoder
-from inbox.api.err import (err, APIException, NotFoundError, InputError,
-                           AccountDoesNotExistError, log_exception)
+from inbox.api.err import (APIException log_exception)
 from nylas.logging import get_logger
 from inbox.models import Namespace, Account
 from inbox.models.session import global_session_scope
@@ -101,7 +100,6 @@ def ns_all():
     # We do this outside the blueprint to support the case of an empty
     # public_id.  However, this means the before_request isn't run, so we need
     # to make our own session
-    raise APIException('batata')
     with global_session_scope() as db_session:
         parser = reqparse.RequestParser(argument_class=ValidatableArgument)
         parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
