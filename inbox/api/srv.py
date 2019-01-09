@@ -5,8 +5,7 @@ from werkzeug.exceptions import default_exceptions, HTTPException
 from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.api.kellogs import APIEncoder
-from inbox.api.err import APIException, log_exception
-from nylas.logging import get_logger
+from inbox.api.err import log_exception
 from inbox.models import Namespace, Account
 from inbox.models.session import global_session_scope
 from inbox.api.validation import (bounded_str, ValidatableArgument,
