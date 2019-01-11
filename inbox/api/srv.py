@@ -1,10 +1,11 @@
+import sys
 from flask import Flask, request, jsonify, make_response, g
 from flask.ext.restful import reqparse
 from werkzeug.exceptions import default_exceptions, HTTPException
 from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.api.kellogs import APIEncoder
-from nylas.logging import get_logger
+from inbox.api.err import log_exception
 from inbox.models import Namespace, Account
 from inbox.models.session import global_session_scope
 from inbox.api.validation import (bounded_str, ValidatableArgument,
@@ -22,11 +23,11 @@ app = Flask(__name__)
 # Note that we need to set this *before* registering the blueprint.
 app.url_map.strict_slashes = False
 
+app.log_exception = log_exception
 
 def default_json_error(ex):
     """ Exception -> flask JSON responder """
-    logger = get_logger()
-    logger.error('Uncaught error thrown by Flask/Werkzeug', exc_info=ex)
+    log_exception(sys.exc_info())
     response = jsonify(message=str(ex), type='api_error')
     response.status_code = (ex.code
                             if isinstance(ex, HTTPException)
@@ -91,7 +92,6 @@ def finish(response):
             'GET,PUT,POST,DELETE,OPTIONS,PATCH'
         response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
-
 
 @app.route('/accounts/')
 def ns_all():
