@@ -29,26 +29,10 @@ def upgrade():
     class Secret(Base):
         __table__ = Base.metadata.tables['secret']
 
-    class GenericAccount(Base):
-        __table__ = Base.metadata.tables['genericaccount']
-
     with session_scope(shard_id, versioned=False) as db_session:
         secrets = db_session.query(Secret).filter(
             Secret._secret.isnot(None),
             Secret.encryption_scheme == 0).all()
-
-        # Join on the genericaccount and optionally easaccount tables to
-        # determine which secrets should have type 'password'.
-        generic_query = db_session.query(Secret.id).join(
-            GenericAccount, Secret.id == GenericAccount.password_id)
-        password_secrets = [id_ for id_, in generic_query]
-        if engine.has_table('easaccount'):
-            class EASAccount(Base):
-                __table__ = Base.metadata.tables['easaccount']
-
-            eas_query = db_session.query(Secret.id).join(
-                EASAccount).filter(Secret.id == EASAccount.password_id)
-            password_secrets.extend([id_ for id_, in eas_query])
 
         for s in secrets:
             plain = s._secret.encode('utf-8') if isinstance(s._secret, unicode) \
@@ -66,11 +50,6 @@ def upgrade():
                 s.encryption_scheme = 1
             else:
                 s._secret = plain
-
-            if s.id in password_secrets:
-                s.type = 'password'
-            else:
-                s.type = 'token'
 
             db_session.add(s)
 
