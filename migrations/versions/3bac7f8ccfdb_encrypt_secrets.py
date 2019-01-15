@@ -14,54 +14,6 @@ from alembic import op, context
 import sqlalchemy as sa
 
 
-# def upgrade():
-#     op.add_column('secret',
-#                   sa.Column('secret', sa.String(length=512), nullable=True))
-
-#     import nacl.secret
-#     import nacl.utils
-#     from inbox.ignition import engine, engine_manager
-#     from inbox.models.session import session_scope
-#     from inbox.config import config
-
-#     print engine_manager.engines
-#     _engine = engine_manager.engines[0]
-#     Base = sa.ext.declarative.declarative_base()
-#     Base.metadata.reflect(_engine)
-
-#     key = config.get_required('SECRET_ENCRYPTION_KEY')
-
-#     class Secret(Base):
-#         __table__ = Base.metadata.tables['secret']
-
-#     with session_scope(0, versioned=False) as db_session:
-#         secrets = db_session.query(Secret).filter(
-#             Secret.encryption_scheme == 0,
-#             Secret._secret.isnot(None)).order_by(Secret.id).all()
-
-#         for s in secrets:
-#             unencrypted = s._secret
-
-#             nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
-
-#             s.secret = nacl.secret.SecretBox(
-#                 key=key,
-#                 encoder=nacl.encoding.HexEncoder
-#             ).encrypt(
-#                 plaintext=unencrypted,
-#                 nonce=nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)
-#             )
-
-#             # Picked arbitrarily
-#             # s.acl_id = 0
-#             # s.type = 0
-
-#             db_session.add(s)
-
-#         db_session.commit()
-
-#     op.drop_column('secret', '_secret')
-
 def upgrade():
     from inbox.config import config
     import nacl.secret
