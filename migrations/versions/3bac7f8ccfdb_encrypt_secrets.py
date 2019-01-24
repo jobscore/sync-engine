@@ -29,7 +29,7 @@ def upgrade():
     class Secret(Base):
         __table__ = Base.metadata.tables['secret']
 
-    with session_scope(shard_id, versioned=False) as db_session:
+    with session_scope(shard_id << 48, versioned=False) as db_session:
         secrets = db_session.query(Secret).filter(
             Secret._secret.isnot(None),
             Secret.encryption_scheme == 0).all()
