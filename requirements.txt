@@ -1,3 +1,4 @@
+pip>=19.0.3
 certifi==2018.10.15
 nylas-production-python>=0.4.3
 coverage==4.2
@@ -63,7 +64,7 @@ psutil==3.3.0
 pyopenssl>=0.15.1
 gevent_openssl==1.2
 backports.ssl==0.0.9
-git+https://github.com/closeio/imapclient.git@cfd0f6c83b38b6fb8d38487f8ae5d1adf4ba2c58#egg=imapclient
+git+https://github.com/closeio/imapclient.git@b9c12026fc61da29b5ddf9122faf6c6c5b09667d#egg=imapclient
 tldextract==1.7.5
 tox==2.3.1
 nylas==1.2.3
