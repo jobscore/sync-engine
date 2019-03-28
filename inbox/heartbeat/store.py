@@ -153,6 +153,7 @@ class HeartbeatStore(object):
         # Update the folder timestamp index for this specific account, too
         client = heartbeat_config.get_redis_client(key.account_id)
         client.zadd(key.account_id, timestamp, key.folder_id)
+        client.reset()
 
     def update_accounts_index(self, key):
         # Find the oldest heartbeat from the account-folder index
