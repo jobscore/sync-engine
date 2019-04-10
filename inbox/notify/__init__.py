@@ -16,7 +16,7 @@ redis_pool = BlockingConnectionPool(
 
 
 def notify_transaction(transaction, db_session):
-    from inbox.models import Namespace
+    from inbox.models import Account, Namespace
 
     # We're only interested in "message created" events
     if transaction.command != 'insert' or transaction.object_type != 'message':
@@ -35,9 +35,11 @@ def notify_transaction(transaction, db_session):
         ]
     }
 
+    nylas_queue = nylas_queue(db_session, transaction)
+
     try:
         pipeline = redis_client.pipeline()
-        pipeline.sadd('resque:queues', 'nylas_default')
+        pipeline.sadd('resque:queues', nylas_queue)
         pipeline.lpush('resque:queue:nylas_default', json.dumps(job))
         log.info('Transaction enqueued',
                  transaction_id=transaction.record_id,
@@ -52,3 +54,24 @@ def notify_transaction(transaction, db_session):
                   job_details=job,
                   error=e)
         raise e
+
+
+def nylas_queue(db_session, transaction):
+    from inbox.models import Account, Namespace
+    account = db_session.query(Namespace) \
+                        .join(Account) \
+                        .filter_by(namespace=transaction.namespace_id)
+
+    message = db_session.query(Message) \
+                        .filter_by(public_id=transaction.object_public_id) \
+                        .first()
+
+    # If there's no message, the transaction is an insert command and should be
+    # processed in the default queue
+    if not message:
+        return 'nylas_default'
+
+    if message.received_date < account.created_at:
+        return 'nylas_low'
+    else:
+        return 'nylas_default'
