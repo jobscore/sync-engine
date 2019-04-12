@@ -8,7 +8,6 @@ gevent_openssl.monkey_patch()
 import os
 import socket
 import platform
-import signal
 import sys
 
 import click
@@ -47,14 +46,7 @@ socket.setdefaulttimeout(SOCKET_TIMEOUT)
 @click.option('--process_num', default=0,
               help="This process's number in the process group: a unique "
                    "number satisfying 0 <= process_num < total_processes.")
-@click.option('--exit-after', default=None,
-              help='A colon-separated range in minutes within which the '
-                   'process will exit. For example, if 30:60 is given, a '
-                   'random time between 30 and 60 minutes is picked after '
-                   'which the process will exit. Combined with supervisor, '
-                   'which automatically restarts terminated processes, this '
-                   'can be used to avoid memory leaks.')
-def main(prod, enable_tracer, enable_profiler, config, process_num, exit_after):
+def main(prod, enable_tracer, enable_profiler, config, process_num):
     """ Launch the Nylas sync service. """
     level = os.environ.get('LOGLEVEL', inbox_config.get('LOGLEVEL'))
     configure_logging(log_level=level)
@@ -101,18 +93,7 @@ def main(prod, enable_tracer, enable_profiler, config, process_num, exit_after):
     enable_profiler_api = inbox_config.get('DEBUG_PROFILING_ON')
 
     process_identifier = '{}:{}'.format(platform.node(), process_num)
-
-    if exit_after:
-        exit_after = exit_after.split(':')
-        exit_after_min, exit_after_max = int(exit_after[0]), int(exit_after[1])
-    else:
-        exit_after_min, exit_after_max = None, None
-
-    sync_service = SyncService(process_identifier, process_num,
-				               exit_after_min=exit_after_min,
-				               exit_after_max=exit_after_max)
-    signal.signal(signal.SIGTERM, sync_service.stop)
-    signal.signal(signal.SIGINT, sync_service.stop)
+    sync_service = SyncService(process_identifier, process_num)
     http_frontend = SyncHTTPFrontend(sync_service, port, enable_tracer,
                                      enable_profiler_api)
     sync_service.register_pending_avgs_provider(http_frontend)
