@@ -35,12 +35,12 @@ def notify_transaction(transaction, db_session):
         ]
     }
 
-    nylas_queue = nylas_queue(db_session, transaction)
+    nylas_queue = get_nylas_queue(db_session, transaction)
 
     try:
         pipeline = redis_client.pipeline()
         pipeline.sadd('resque:queues', nylas_queue)
-        pipeline.lpush('resque:queue:nylas_default', json.dumps(job))
+        pipeline.lpush('resque:queue:' + nylas_queue, json.dumps(job))
         log.info('Transaction enqueued',
                  transaction_id=transaction.record_id,
                  namespace_id=transaction.namespace_id,
@@ -56,7 +56,7 @@ def notify_transaction(transaction, db_session):
         raise e
 
 
-def nylas_queue(db_session, transaction):
+def get_nylas_queue(db_session, transaction):
     from inbox.models import Account, Namespace
     account = db_session.query(Namespace) \
                         .join(Account) \
