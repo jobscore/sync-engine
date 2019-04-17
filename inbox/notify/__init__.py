@@ -10,6 +10,10 @@ REDIS_DB = int(config.get('NOTIFY_QUEUE_REDIS_DB'))
 
 MAX_CONNECTIONS = 40
 
+redis_pool = BlockingConnectionPool(
+        max_connections=MAX_CONNECTIONS,
+        host=REDIS_HOSTNAME, port=REDIS_PORT, db=REDIS_DB)
+
 
 def notify_transaction(transaction, db_session):
     from inbox.models import Namespace
@@ -18,6 +22,7 @@ def notify_transaction(transaction, db_session):
     if transaction.command != 'insert' or transaction.object_type != 'message':
         return
 
+    print "TRX: ", transaction.id
     log.info('Transaction prepared to enqueue',
              transaction_id=transaction.record_id)
     namespace = db_session.query(Namespace).get(transaction.namespace_id)
@@ -73,8 +78,4 @@ def get_nylas_queue(db_session, transaction):
 
 
 def get_redis_client():
-    redis_pool = BlockingConnectionPool(
-        max_connections=MAX_CONNECTIONS,
-        host=REDIS_HOSTNAME, port=REDIS_PORT, db=REDIS_DB)
-
     return StrictRedis(connection_pool=redis_pool)
