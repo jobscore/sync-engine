@@ -10,13 +10,9 @@ REDIS_DB = int(config.get('NOTIFY_QUEUE_REDIS_DB'))
 
 MAX_CONNECTIONS = 40
 
-redis_pool = BlockingConnectionPool(
-    max_connections=MAX_CONNECTIONS,
-    host=REDIS_HOSTNAME, port=REDIS_PORT, db=REDIS_DB)
-
 
 def notify_transaction(transaction, db_session):
-    from inbox.models import Account, Namespace
+    from inbox.models import Namespace
 
     # We're only interested in "message created" events
     if transaction.command != 'insert' or transaction.object_type != 'message':
@@ -25,7 +21,6 @@ def notify_transaction(transaction, db_session):
     log.info('Transaction prepared to enqueue',
              transaction_id=transaction.record_id)
     namespace = db_session.query(Namespace).get(transaction.namespace_id)
-    redis_client = StrictRedis(connection_pool=redis_pool)
     job = {
         'class': 'ProcessMessageQueue',
         'args': [
@@ -36,7 +31,7 @@ def notify_transaction(transaction, db_session):
     }
 
     nylas_queue = get_nylas_queue(db_session, transaction)
-
+    redis_client = get_redis_client()
     try:
         pipeline = redis_client.pipeline()
         pipeline.sadd('resque:queues', nylas_queue)
@@ -57,10 +52,10 @@ def notify_transaction(transaction, db_session):
 
 
 def get_nylas_queue(db_session, transaction):
-    from inbox.models import Account, Namespace
+    from inbox.models import Account, Message, Namespace
     account = db_session.query(Namespace) \
-                        .join(Account) \
-                        .filter_by(namespace=transaction.namespace_id)
+                        .get(transaction.namespace_id) \
+                        .account
 
     message = db_session.query(Message) \
                         .filter_by(public_id=transaction.object_public_id) \
@@ -75,3 +70,11 @@ def get_nylas_queue(db_session, transaction):
         return 'nylas_low'
     else:
         return 'nylas_default'
+
+
+def get_redis_client():
+    redis_pool = BlockingConnectionPool(
+        max_connections=MAX_CONNECTIONS,
+        host=REDIS_HOSTNAME, port=REDIS_PORT, db=REDIS_DB)
+
+    return StrictRedis(connection_pool=redis_pool)
