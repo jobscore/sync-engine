@@ -52,7 +52,7 @@ def notify_transaction(transaction, db_session):
 
 
 def get_nylas_queue(db_session, transaction):
-    from inbox.models import Account, Message, Namespace
+    from inbox.models import Message, Namespace
     account = db_session.query(Namespace) \
                         .get(transaction.namespace_id) \
                         .account
