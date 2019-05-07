@@ -22,7 +22,6 @@ def notify_transaction(transaction, db_session):
     if transaction.command != 'insert' or transaction.object_type != 'message':
         return
 
-    print "TRX: ", transaction.id
     log.info('Transaction prepared to enqueue',
              transaction_id=transaction.record_id)
     namespace = db_session.query(Namespace).get(transaction.namespace_id)
