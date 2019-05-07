@@ -15,60 +15,47 @@ redis_pool = BlockingConnectionPool(
         host=REDIS_HOSTNAME, port=REDIS_PORT, db=REDIS_DB)
 
 
-def notify_transaction(transaction, db_session):
+def notify_message_created(message, db_session):
     from inbox.models import Namespace
 
-    # We're only interested in "message created" events
-    if transaction.command != 'insert' or transaction.object_type != 'message':
-        return
-
-    log.info('Transaction prepared to enqueue',
-             transaction_id=transaction.record_id)
-    namespace = db_session.query(Namespace).get(transaction.namespace_id)
+    log.info('Message prepared to enqueue',
+             message_id=message.public_id)
+    namespace = db_session.query(Namespace).get(message.namespace_id)
     job = {
         'class': 'ProcessMessageQueue',
         'args': [
             'nylas_notification',
             namespace.public_id,
-            transaction.object_public_id
+            message.public_id
         ]
     }
 
-    nylas_queue = get_nylas_queue(db_session, transaction)
+    nylas_queue = get_nylas_queue(db_session, message)
     redis_client = get_redis_client()
     try:
         pipeline = redis_client.pipeline()
         pipeline.sadd('resque:queues', nylas_queue)
         pipeline.lpush('resque:queue:' + nylas_queue, json.dumps(job))
-        log.info('Transaction enqueued',
-                 transaction_id=transaction.record_id,
-                 namespace_id=transaction.namespace_id,
+        log.info('Message enqueued',
+                 message_id=message.public_id,
+                 namespace_id=message.namespace_id,
                  job_details=job)
         pipeline.execute()
         pipeline.reset()
     except Exception as e:
-        log.error('Transaction not enqueued!',
-                  transaction_id=transaction.record_id,
-                  namespace_id=transaction.namespace_id,
+        log.error('Message not enqueued!',
+                  message_id=message.public_id,
+                  namespace_id=message.namespace_id,
                   job_details=job,
                   error=e)
         raise e
 
 
-def get_nylas_queue(db_session, transaction):
-    from inbox.models import Message, Namespace
+def get_nylas_queue(db_session, message):
+    from inbox.models import Namespace
     account = db_session.query(Namespace) \
-                        .get(transaction.namespace_id) \
+                        .get(message.namespace_id) \
                         .account
-
-    message = db_session.query(Message) \
-                        .filter_by(public_id=transaction.object_public_id) \
-                        .first()
-
-    # If there's no message, the transaction is an insert command and should be
-    # processed in the default queue
-    if not message:
-        return 'nylas_default'
 
     if message.received_date < account.created_at:
         return 'nylas_low'
