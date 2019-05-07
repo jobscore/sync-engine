@@ -52,7 +52,7 @@ def notify_message_created(message, db_session):
 
 
 def get_nylas_queue(db_session, message):
-    from inbox.models import Message, Namespace
+    from inbox.models import Namespace
     account = db_session.query(Namespace) \
                         .get(message.namespace_id) \
                         .account
