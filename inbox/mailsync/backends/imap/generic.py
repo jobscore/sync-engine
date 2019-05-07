@@ -489,7 +489,7 @@ class FolderSyncEngine(Greenlet):
 
         # We're calling this here since the ESS requires the message to have
         # been flushed. Otherwise it will return error.
-        # notify_message_created(new_uid.message, db_session)
+        notify_message_created(new_uid.message, db_session)
 
         # If we're in the polling state, then we want to report the metric
         # for latency when the message was received vs created
