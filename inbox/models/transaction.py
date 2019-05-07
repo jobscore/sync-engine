@@ -5,7 +5,6 @@ from sqlalchemy.orm import relationship
 from inbox.models.base import MailSyncBase
 from inbox.models.mixins import HasPublicID, HasRevisions
 from inbox.models.namespace import Namespace
-from inbox.notify import notify_transaction
 
 
 class Transaction(MailSyncBase, HasPublicID):
@@ -56,9 +55,6 @@ def is_dirty(session, obj):
 
 def create_revisions(session):
     for obj in session:
-        if isinstance(obj, Transaction) and obj in session.new:
-            notify_transaction(obj, session)
-
         if (not isinstance(obj, HasRevisions) or
                 obj.should_suppress_transaction_creation):
             continue

@@ -664,8 +664,6 @@ def redis_mock(redis_client, monkeypatch):
                         set_self_client)
     monkeypatch.setattr('inbox.scheduling.event_queue._get_redis_client',
                         fake_redis_client)
-    monkeypatch.setattr('inbox.notify.get_redis_client',
-                        fake_redis_client)
     monkeypatch.setattr('inbox.mailsync.service.SHARED_SYNC_EVENT_QUEUE_ZONE_MAP', {})
     yield
     monkeypatch.undo()
