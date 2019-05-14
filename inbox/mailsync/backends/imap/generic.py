@@ -90,6 +90,7 @@ from inbox.mailsync.backends.base import (MailsyncDone, MailsyncError,
                                           THROTTLE_COUNT, THROTTLE_WAIT)
 from inbox.heartbeat.store import HeartbeatStatusProxy
 from inbox.events.ical import import_attached_events
+from inbox.notify import notify_message_created
 
 
 # Idle doesn't necessarily pick up flag changes, so we don't want to
@@ -485,6 +486,10 @@ class FolderSyncEngine(Greenlet):
         if new_uid.message.has_attached_events:
             with db_session.no_autoflush:
                 import_attached_events(db_session, acct, new_uid.message)
+
+        # We're calling this here since the ESS requires the message to have
+        # been flushed. Otherwise it will return error.
+        notify_message_created(new_uid.message, db_session)
 
         # If we're in the polling state, then we want to report the metric
         # for latency when the message was received vs created
