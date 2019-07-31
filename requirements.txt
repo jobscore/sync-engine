@@ -1,4 +1,3 @@
-pip>=19.0.3
 certifi==2018.10.15
 nylas-production-python>=0.4.3
 coverage==4.2
@@ -72,3 +71,4 @@ cffi>=1.6
 pyasn1==0.2.3
 six==1.11.0
 colorama==0.3.9
+Werkzeug==0.14.1
