@@ -223,6 +223,8 @@ def handle_not_implemented_error(error):
 @app.errorhandler(APIException)
 def handle_input_error(error):
     # these "errors" are normal, so we don't need to save a traceback
+    if 'log_context' not in request.environ.keys():
+        request.environ['log_context'] = {}
     request.environ['log_context']['error'] = error.__class__.__name__
     request.environ['log_context']['error_message'] = error.message
     response = flask_jsonify(message=error.message,
@@ -1911,7 +1913,7 @@ def stream_changes():
 
 
 ##
-# Groups and Contact Rankings 
+# Groups and Contact Rankings
 ##
 
 @app.route('/groups/intrinsic')
