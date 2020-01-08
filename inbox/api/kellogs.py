@@ -28,9 +28,9 @@ def format_categories(categories):
         if not category:
             continue
 
-        formatted_categories << {'id': category.public_id,
-                                 'name': category.name or None,
-                                 'display_name': category.api_display_name}
+        formatted_categories.append({'id': category.public_id,
+                                     'name': category.name or None,
+                                     'display_name': category.api_display_name})
 
     return formatted_categories
 
