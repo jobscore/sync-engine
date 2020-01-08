@@ -22,9 +22,17 @@ def format_address_list(addresses):
 def format_categories(categories):
     if categories is None:
         return []
-    return [{'id': category.public_id, 'name': category.name or None,
-             'display_name': category.api_display_name} for category in
-            categories]
+
+    formatted_categories = []
+    for category in categories:
+        if not category:
+            continue
+
+        formatted_categories << {'id': category.public_id,
+                                 'name': category.name or None,
+                                 'display_name': category.api_display_name}
+
+    return formatted_categories
 
 
 def format_phone_numbers(phone_numbers):
