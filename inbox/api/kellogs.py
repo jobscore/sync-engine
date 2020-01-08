@@ -150,6 +150,7 @@ def _encode(obj, namespace_public_id=None, expand=False, is_n1=False):
             'events': [encode(e) for e in obj.events]
         }
 
+        log.info(obj.categories)
         categories = format_categories(obj.categories)
         if obj.namespace.account.category_type == 'folder':
             resp['folder'] = categories[0] if categories else None
