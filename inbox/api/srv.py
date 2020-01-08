@@ -20,7 +20,9 @@ from ns_api import DEFAULT_LIMIT
 from inbox.webhooks.gpush_notifications import app as webhooks_api
 
 app = Flask(__name__)
-logging.basicConfig(filename='/var/log/inboxapp/nylas-flask-api.log', level=logging.INFO)
+gunicorn_logger = logging.getLogger('gunicorn.error')
+app.logger.handlers = gunicorn_logger.handlers
+app.logger.setLevel(gunicorn_logger.level)
 # Handle both /endpoint and /endpoint/ without redirecting.
 # Note that we need to set this *before* registering the blueprint.
 app.url_map.strict_slashes = False
