@@ -1,6 +1,7 @@
 import arrow
 import datetime
 import calendar
+import logging
 from json import JSONEncoder, dumps
 from flask import Response
 
@@ -11,6 +12,7 @@ from inbox.models.event import (RecurringEvent, RecurringEventOverride,
                                 InflatedEvent)
 from nylas.logging import get_logger
 log = get_logger()
+gunicorn_logger = logging.getLogger('gunicorn.error')
 
 
 def format_address_list(addresses):
@@ -150,8 +152,8 @@ def _encode(obj, namespace_public_id=None, expand=False, is_n1=False):
             'events': [encode(e) for e in obj.events]
         }
 
-        log.error("not a real error")
-        log.info("Categories: ", categories=obj.categories)
+        gunicorn_logger.error("not a real error")
+        gunicorn_logger.info("Categories: ", categories=obj.categories)
         categories = format_categories(obj.categories)
         if obj.namespace.account.category_type == 'folder':
             resp['folder'] = categories[0] if categories else None
