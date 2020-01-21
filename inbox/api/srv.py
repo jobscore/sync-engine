@@ -56,6 +56,7 @@ def auth():
         auth_header = request.headers.get('Authorization', None)
 
         if not auth_header:
+            log_exception(sys.exc_info())
             return make_response(AUTH_ERROR_MSG)
 
         parts = auth_header.split()
@@ -75,6 +76,7 @@ def auth():
             g.namespace_id = namespace.id
             g.account_id = namespace.account.id
         except NoResultFound:
+            log_exception(sys.exc_info())
             return make_response((
                 "Could not verify access credential.", 401,
                 {'WWW-Authenticate': 'Basic realm="API '
